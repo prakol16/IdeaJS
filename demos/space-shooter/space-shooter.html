@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Example</title>
+<script src="../../src/IdeaJS-beta-standalone-min.js" type="text/javascript"></script>
+</head>
+<body>
+<script type="text/javascript">
+(function(Idea) {
+	"use strict";
+	$(document).ready(function() {
+		var game = Idea.init(320, 416);
+		Idea.roomGoto(playMenu);
+		game.play();
+	});
+	Idea.defineSettings({
+		loadColor: "white"
+	});
+	var playMenu = new Idea.Room({
+		width: 320,
+		height: 416,
+		background: "black"
+	});
+	var level1 = new Idea.Room({
+		width: 320,
+		height: 416,
+		background: "black"
+	});
+	var loser = new Idea.Room({
+		width: 320,
+		height: 416,
+		background: "black"
+	});
+	playMenu.create = function() {
+		new objControllerStart(100, 200);
+	};
+	level1.create = function() {
+		new objController(0, 0);
+		new objRocket(0, Idea.gameHeight() - 100);
+		new objMeteor(0, 0);
+		new objAlien(64, 0);
+	};
+	loser.create = function() {
+		Idea.removeAllAlarms();
+		new objControllerLost(0, 0);
+	};
+	function formatSound(snd) {
+		return [snd + ".mp3", snd + ".wav", snd + ".ogg"];
+	}
+	var sndExplosion = new Idea.Sound(formatSound("explosion"), 5);
+	var sndShoot = new Idea.Sound(formatSound("shoot"));
+	var sndLose = new Idea.Sound(formatSound("lose"));
+	var sprRocket = new Idea.Sprite({
+		source: "rocket.png",
+		width: 37,
+		height: 72
+	});
+	var sprMeteor = new Idea.Sprite({
+		source: "meteorite.png",
+		width: 64,
+		height: 64
+	});
+	var sprExplosion = new Idea.Sprite({
+		source: "explosion.png",
+		tiles: Idea.animation({
+			width: 448,
+			height: 64,
+			divider: 64
+		}),
+		speed: 0.5
+	});
+	var sprAlien = new Idea.Sprite({
+		source: "alien.png",
+		tiles: Idea.animation({
+			width: 640,
+			height: 64,
+			divider: 64
+		}),
+		speed: 0.5
+	});
+	var sprGreenLaser = new Idea.Sprite({
+		source: function(canvas) {
+			var ctx = canvas.getContext("2d");
+			ctx.fillStyle = "lightgreen";
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+		},
+		width: 8,
+		height: 32
+	});
+	var sprPurpleLaser = new Idea.Sprite({
+		source: function(canvas) {
+			var ctx = canvas.getContext("2d");
+			ctx.fillStyle = "purple";
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+		},
+		width: 8,
+		height: 32
+	});
+	var objControllerStart = Idea.gameObject({
+		draw: function() {
+			// This function is called every frame after performing necessary transformations e.g. rotate, translate.
+			// Since we don't have any translations, it is safe to put it in, say, a step event
+			// But, it is more readable and more extendable (in case, one day we want to make translations.)
+			var ctx = Idea.getCanvasContext();
+			// Draw the text
+			ctx.fillStyle = "white";
+			ctx.font = "20px sans-serif";
+			ctx.fillText(this.text, this.x, this.y);
+		},
+		text: "Click to start",
+		"mousepressed-left": function() {
+			Idea.roomGoto("next");
+		}
+	}, ["controller-start"]);
+	var objControllerLost = Idea.gameObject({
+		create: function() {
+			sndLose.play();
+		},
+		draw: function() {
+			var ctx = Idea.getCanvasContext();
+			ctx.fillStyle = "white";
+			ctx.font = "20px sans-serif";
+			ctx.fillText("You lost!", 115, 190);
+			ctx.fillText("Click to try again.", 80, 210);
+		},
+		"mousepressed-left": function() {
+			Idea.roomGoto(level1);
+		}
+	});
+	var objController = Idea.gameObject({
+		lives: 3,
+		score: 0,
+		create: function() {
+			this.alarm = null;
+			var time = Math.floor(Math.random() * 240) + 120;
+			this.firealarm = new Idea.Alarm(time, function() {
+				var items = Math.floor(Math.random() * 4),
+					grid = [0, 64, 128, 192, 256];
+				var place, ind;
+				for (var i = 0; i < items; i++) {
+					ind = Math.floor(Math.random() * grid.length);
+					place = grid[ind];
+					if (Math.random() < 0.25) {
+						new objAlien(place, 0);
+					} else {
+						new objMeteor(place, -63);
+					}
+					grid.splice(ind, 1);
+				};
+				this.startOver();
+			});
+		},
+		step: function() {
+			if (Idea("rocket", "current").length === 0) {
+				// There is no rocket
+				if (Idea.alarms.indexOf(this.alarm) < 0) {
+					// The rocket alarm hasn't been set
+					if (--this.lives === 0) {
+						// We are out of lives
+						// Say game over (described later.)
+						Idea.roomGoto(loser);
+					}
+					else {
+						// We still have some lives
+						this.alarm = new Idea.Alarm(60, function() {
+							// After some time recreate objRocket
+							var rocket = new objRocket(0, Idea.gameHeight() - 100);
+							rocket.invincible = true;
+							rocket.imgScaleX = rocket.imgScaleY = 0.5;
+							Idea.removeAlarm(this);
+							new Idea.Alarm(120, function() {
+								rocket.invincible = false;
+								rocket.imgScaleX = rocket.imgScaleY = 1;
+							});
+						});
+					}
+				}
+			}
+			if (Idea("alien", "current").length === 0 && Idea("meteor", "current").length === 0) {
+				this.firealarm.trigger();
+			}
+		},
+		draw: function() {
+			var ctx = Idea.getCanvasContext();
+			ctx.font = "20px sans-serif";
+			ctx.fillStyle = "white";
+			var text = ("Lives: lives  Score: score").replace("lives", this.lives).replace("score", this.score);
+			var width = ctx.measureText(text).width;
+			ctx.fillText(text, Idea.gameWidth() / 2 - width / 2, Idea.gameHeight() - 20);
+		}
+	});
+	var objRocket = Idea.gameObject({
+		sprite: sprRocket,
+		step: function() {
+			// This is like an EnterFrame event
+			// It is called every frame
+			this.x = Idea.globalMouseX - this.width / 2 // Center it on Idea.globalMouseX
+		},
+		invincible: false
+	}, ["rocket", "explodes"]);
+	var objMeteor = Idea.gameObject({
+		sprite: sprMeteor,
+		create: function() {
+			this.vy = Math.random() * 5 + 1; // Set our y velocity to a random value from 1 to 6
+		},
+		step: function() {
+			this.imgAngle += 4;
+		},
+		onDeath: function() {
+			var controller = Idea(objController)[0];
+			controller.score += 50;
+		}
+	}, ["meteor", "explodes", "inside"]);
+	var objGreenLaser = Idea.gameObject({
+		sprite: sprGreenLaser
+	}, ["yourlaser", "inside"]);
+	var objPurpleLaser = Idea.gameObject({
+		sprite: sprPurpleLaser
+	}, ["alienlaser", "inside"]);
+	var objAlien = Idea.gameObject({
+		sprite: sprAlien,
+		create: function() {
+			this.vy = 1;
+			var time = Math.floor(Math.random() * 120) + 60; // Generate a random integer from 60 to 180
+			var _this = this;
+			this.timer = new Idea.Alarm(time, function() {
+				// Once it has ended
+				_this.shoot();
+				this.startOver();
+			});
+		},
+		shoot: function() {
+			var laser = new objPurpleLaser(this.x + this.width / 2, this.y + 64);
+			laser.vy = 4;
+		},
+		onDeath: function() {
+			if (this.timer)
+				Idea.removeAlarm(this.timer);
+			var controller = Idea(objController)[0];
+			controller.score += 100;
+		}
+	}, ["alien", "explodes", "inside"]);
+	Idea("inside").on("outside room", function() {
+		this.destroy();
+	});
+	Idea("rocket").on("keyup-space", function() {
+		var laser = new objGreenLaser(this.x + this.width / 2, this.y - 33);
+		sndShoot.play();
+		laser.vy = -5;
+	});
+	Idea("yourlaser").collides("meteor, alien", function(other) {
+		other.death();
+		this.destroy();
+	});
+	Idea("alienlaser").collides("rocket", function(rocket) {
+		if (!rocket.invincible) {
+			rocket.death();
+			this.destroy();
+		}
+	});
+	Idea("rocket").collides("meteor, alien", function(other, direction) {
+		if (!this.invincible) {
+			this.death();
+			other.death();
+		}
+	});
+	Idea("explodes").on("death", function() {
+		if (typeof this.onDeath === "function") {
+			this.onDeath();
+		};
+		sndExplosion.play();
+		this.sprite = sprExplosion;
+		this.nullified = true; // Nullified means it won't run any events (with exceptions), simply refresh the drawing state.
+	}).on("begin step", function() {
+		if (this.nullified) {
+			if (this !== Idea(this.constructor)[0]) this.sprite.imgInd+=0.5; // Workaround for a bug
+			if (this.sprite.imgInd >= this.sprite.imgs.length - 1) { // We are on the last img
+				this.destroy();
+				this.sprite.imgInd = 0;
+			}
+		}
+	});
+})(window.Idea);
+</script>
+</body>
+</html>
