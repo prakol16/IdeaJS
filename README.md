@@ -21,3 +21,4 @@ Coming Soon
 IdeaJS is still being worked on, and you can expect:
   - Much better DOM handling (although the current version supports it, DOM is very buggy right now.)
   - Fixes on a few issues with sprite animation
+  - Mobile support
