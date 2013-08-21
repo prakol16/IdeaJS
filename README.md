@@ -1,7 +1,7 @@
 IdeaJS
 ======
 
-A library for developing games based on the HTML5 canvas
+A game engine for developing games based on the HTML5 canvas
 
 FEATURES:
   - Fast background rendering, due to its having two canvases
