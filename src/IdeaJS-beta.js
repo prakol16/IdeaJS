@@ -2,13 +2,22 @@
 /*
 Author: Praneeth Kolichala
 Copyright (c) unofficially 2012-2013
-Version: Beta 1.0.0
+Version: Beta 1.1.0
+New in this version:
+    - controls
+    - Modules
+    - All tags include "*"
+    - Changed moveRight, moveLeft, etc. to be methods of a gameObject rather than an instance
+    - @trigger method
+    - Added @unbindCollision and @off
 */
 
 
 (function() {
   "use strict";
-  var $, GetAndSet, Idea, backgroundCanvas, byTags, collisionRect, fromCharCode, game, gameHeight, gameWidth, game_screen, instanceArray, newAudio, playingSounds, room, useDom, _ref,
+  var $, Alarm, GameObjectArray, Idea, InstanceArray, Module, Room, Sound, Sprite, alarms, allObjects, allRooms, assets, backgroundCanvas, basicFunctionsEnd, basicFunctionsStart, byTags, collisionRect, controls, error, fromCharCode, game, gameHeight, gameWidth, game_screen, math, modules, newAudio, playingSounds, removeAlarm, room, roomGoto, settings, support, trigger, triggerCollision, useDom, warn, _ref,
+    __hasProp = {}.hasOwnProperty,
+    __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
     __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; },
     __slice = [].slice;
 
@@ -18,43 +27,92 @@ Version: Beta 1.0.0
 
   $ = jQuery;
 
+  error = function(string, deep) {
+    if (deep == null) {
+      deep = false;
+    }
+    if (deep) {
+      throw new Error(string);
+    } else {
+      if (typeof console !== "undefined" && console !== null) {
+        if (typeof console.error === "function") {
+          console.error(string);
+        }
+      }
+    }
+  };
+
+  warn = function(string) {
+    return typeof console !== "undefined" && console !== null ? typeof console.warn === "function" ? console.warn(string) : void 0 : void 0;
+  };
+
+  GameObjectArray = (function(_super) {
+    __extends(GameObjectArray, _super);
+
+    function GameObjectArray(original) {
+      var item, _i, _len;
+      for (_i = 0, _len = original.length; _i < _len; _i++) {
+        item = original[_i];
+        this.push(item);
+      }
+    }
+
+    GameObjectArray.prototype.on = function() {
+      var obj, _i, _len;
+      for (_i = 0, _len = this.length; _i < _len; _i++) {
+        obj = this[_i];
+        obj.on.apply(obj, arguments);
+      }
+      return this;
+    };
+
+    GameObjectArray.prototype.off = function() {
+      var obj, _i, _len;
+      for (_i = 0, _len = this.length; _i < _len; _i++) {
+        obj = this[_i];
+        obj.off.apply(obj, arguments);
+      }
+      return this;
+    };
+
+    GameObjectArray.prototype.unbindCollision = function() {
+      var obj, _i, _len;
+      for (_i = 0, _len = this.length; _i < _len; _i++) {
+        obj = this[_i];
+        obj.unbindCollision.apply(obj, arguments);
+      }
+      return this;
+    };
+
+    GameObjectArray.prototype.collides = function() {
+      var obj, _i, _len;
+      for (_i = 0, _len = this.length; _i < _len; _i++) {
+        obj = this[_i];
+        obj.collides.apply(obj, arguments);
+      }
+      return this;
+    };
+
+    return GameObjectArray;
+
+  })(Array);
+
   Idea = function(arg, n, d, f) {
-    var b, gameObjectArray, i, inst, insts, isListOfNumbers, nType, newInsts, obj, theType, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _n, _ref, _ref1, _ref2, _results, _results1;
+    var b, i, inst, insts, isListOfNumbers, nType, newInsts, obj, theType, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _n, _ref, _ref1, _ref2, _results, _results1;
     theType = $.type(arg);
     nType = $.type(n);
     isListOfNumbers = /^(?:\d,?)+$/;
-    gameObjectArray = function(original) {
-      var arr;
-      arr = original.slice(0);
-      arr.on = function() {
-        var obj, _i, _len;
-        for (_i = 0, _len = this.length; _i < _len; _i++) {
-          obj = this[_i];
-          obj.on.apply(obj, arguments);
-        }
-        return this;
-      };
-      arr.collides = function() {
-        var obj, _i, _len;
-        for (_i = 0, _len = this.length; _i < _len; _i++) {
-          obj = this[_i];
-          obj.collides.apply(obj, arguments);
-        }
-        return this;
-      };
-      return arr;
-    };
-    if (__indexOf.call(Idea.allObjects, arg) >= 0 && __indexOf.call(Idea.allRooms, n) >= 0) {
+    if (__indexOf.call(allObjects, arg) >= 0 && __indexOf.call(allRooms, n) >= 0) {
       return n.allInstances[arg.objectId];
-    } else if (__indexOf.call(Idea.allObjects, arg) >= 0 && (nType === "undefined" || n === "current")) {
-      return Idea(arg, Idea.getRoom());
+    } else if (__indexOf.call(allObjects, arg) >= 0 && (nType === "undefined" || n === "current")) {
+      return Idea(arg, room);
     } else if (theType === "undefined" || theType === "null") {
-      return Idea.allObjects;
+      return allObjects;
     } else if (theType === "number" && nType === "undefined") {
-      return Idea.allObjects[arg];
+      return allObjects[arg];
     } else if (theType === "number" && n === "current") {
       return Idea(Idea(arg));
-    } else if (theType === "number" && __indexOf.call(Idea.allRooms, n) >= 0) {
+    } else if (theType === "number" && __indexOf.call(allRooms, n) >= 0) {
       return Idea(Idea(arg), n);
     } else if (theType === "string") {
       switch (arg) {
@@ -91,8 +149,8 @@ Version: Beta 1.0.0
                 }
                 return _results2;
               })();
-              return gameObjectArray(b);
-            } else if (n === "current" || __indexOf.call(Idea.allRooms, n) >= 0) {
+              return new GameObjectArray(b);
+            } else if (n === "current" || __indexOf.call(allRooms, n) >= 0) {
               b = (function() {
                 var _k, _len1, _ref1, _results2;
                 _ref1 = arg.split(",");
@@ -103,7 +161,7 @@ Version: Beta 1.0.0
                 }
                 return _results2;
               })();
-              newInsts = instanceArray();
+              newInsts = new InstanceArray();
               for (_k = 0, _len1 = b.length; _k < _len1; _k++) {
                 obj = b[_k];
                 _ref1 = Idea(obj, n);
@@ -117,20 +175,20 @@ Version: Beta 1.0.0
           } else if (theType === "string" && nType === "undefined") {
             b = byTags[arg];
             if (b == null) {
-              if (!Idea.settings.suppressTagWarnings) {
-                console.error("Bad tag name");
+              if (!settings.suppressTagWarnings) {
+                error("Bad tag name");
               }
               return;
             }
-            return gameObjectArray(b);
-          } else if (theType === "string" && (n === "current" || __indexOf.call(Idea.allRooms, n) >= 0)) {
+            return new GameObjectArray(b);
+          } else if (theType === "string" && (n === "current" || __indexOf.call(allRooms, n) >= 0)) {
             b = byTags[arg];
             if (b == null) {
-              if (!Idea.settings.suppressTagWarnings) {
-                console.error("Bad tag name");
+              if (!settings.suppressTagWarnings) {
+                error("Bad tag name");
               }
             }
-            newInsts = instanceArray();
+            newInsts = new InstanceArray();
             for (_m = 0, _len3 = b.length; _m < _len3; _m++) {
               obj = b[_m];
               _ref2 = Idea(obj, n);
@@ -141,11 +199,13 @@ Version: Beta 1.0.0
             }
             return newInsts;
           } else {
-            throw new Error("Unrecognizable arguments");
+            return error("Unrecognizable arguments", true);
           }
       }
     }
   };
+
+  Idea.version = "beta";
 
   fromCharCode = function(chr) {
     var from32to40, letters, ret;
@@ -224,63 +284,102 @@ Version: Beta 1.0.0
 
   byTags = {};
 
-  GetAndSet = function() {
-    var fn, i, len, prop, props, retVal, _i, _j, _len;
-    len = arguments[0], props = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
-    retVal = [];
-    for (i = _i = 0; 0 <= len ? _i < len : _i > len; i = 0 <= len ? ++_i : --_i) {
-      retVal.push({});
-    }
-    for (_j = 0, _len = props.length; _j < _len; _j++) {
-      prop = props[_j];
-      if (prop.slice(0, 3) === "fn:") {
-        fn = prop.slice(3);
-        (function(fn) {
-          return retVal[fn] = function() {
-            var inst, _k, _len1, _results;
-            _results = [];
-            for (_k = 0, _len1 = this.length; _k < _len1; _k++) {
-              inst = this[_k];
-              _results.push(inst[fn].apply(inst, arguments));
-            }
-            return _results;
-          };
-        })(fn);
-      } else {
-        (function(prop) {
-          return Object.defineProperty(retVal, prop, {
-            set: function(val) {
-              var _k, _len1;
-              for (_k = 0, _len1 = this.length; _k < _len1; _k++) {
-                i = this[_k];
-                i[prop] = val;
-              }
-            },
-            get: function(val) {
-              var _ref;
-              return (_ref = this[0]) != null ? _ref[prop] : void 0;
-            }
-          });
-        })(prop);
+  modules = [];
+
+  Module = (function() {
+    Module.prototype.on = function(events, fn, overwrite) {
+      var buffer, selector;
+      selector = this.selector;
+      buffer = this.buffer;
+      if (buffer[selector] == null) {
+        buffer[selector] = [];
       }
-    }
-    retVal.attr = function(prop, val) {
-      var _k, _len1;
-      for (_k = 0, _len1 = this.length; _k < _len1; _k++) {
-        i = this[_k];
-        i.attr.apply(i, arguments);
-      }
+      buffer[selector].push([events, fn, overwrite]);
       return this;
     };
-    return retVal;
+
+    function Module(selector) {
+      this.selector = selector;
+      modules.push(this);
+      this.buffer = {};
+    }
+
+    return Module;
+
+  })();
+
+  Idea.module = function(tag) {
+    return new Module(tag);
   };
 
-  instanceArray = function() {
-    return GetAndSet(0, 'x', 'y', 'vx', 'vy', 'useBackCan', 'deactivateOut', 'sprite', 'create', 'begin step', 'draw', 'step', 'end step', 'events', 'collision', 'visible', 'fn:destroy', 'fn:moveUp', 'fn:moveDown', 'fn:moveRight', 'fn:moveLeft', 'fn:fourDirections');
-  };
+  InstanceArray = (function(_super) {
+    var fn, fns, prop, props, _fn, _fn1, _i, _j, _len, _len1,
+      _this = this;
+
+    __extends(InstanceArray, _super);
+
+    function InstanceArray() {
+      InstanceArray.__super__.constructor.apply(this, arguments);
+    }
+
+    InstanceArray.prototype.attr = function(str, value) {
+      var inst, _i, _len, _ref;
+      if ((value != null) || $.type(str) === "object") {
+        for (_i = 0, _len = this.length; _i < _len; _i++) {
+          inst = this[_i];
+          inst.attr.apply(inst, arguments);
+        }
+        return this;
+      } else {
+        return (_ref = this[0]).attr.apply(_ref, arguments);
+      }
+    };
+
+    props = ['x', 'y', 'vx', 'vy', 'useBackCan', 'deactivateOut', 'sprite', 'create', 'begin step', 'draw', 'step', 'end step', 'events', 'collision', 'visible'];
+
+    fns = ['trigger', 'destroy', 'moveUp', 'moveDown', 'moveRight', 'moveLeft', 'fourDirections', 'animate'];
+
+    _fn = function(prop) {
+      Object.defineProperty(InstanceArray.prototype, prop, {
+        set: function(val) {
+          var i, _j, _len1;
+          for (_j = 0, _len1 = this.length; _j < _len1; _j++) {
+            i = this[_j];
+            i[prop] = val;
+          }
+        },
+        get: function(val) {
+          var _ref;
+          return (_ref = this[0]) != null ? _ref[prop] : void 0;
+        }
+      });
+    };
+    for (_i = 0, _len = props.length; _i < _len; _i++) {
+      prop = props[_i];
+      _fn(prop);
+    }
+
+    _fn1 = function(fn) {
+      InstanceArray.prototype[fn] = function() {
+        var inst, _k, _len2;
+        for (_k = 0, _len2 = this.length; _k < _len2; _k++) {
+          inst = this[_k];
+          inst[fn].apply(inst, arguments);
+        }
+        return this;
+      };
+    };
+    for (_j = 0, _len1 = fns.length; _j < _len1; _j++) {
+      fn = fns[_j];
+      _fn1(fn);
+    }
+
+    return InstanceArray;
+
+  }).call(this, Array);
 
   Idea.init = function(xGameWidth, xGameHeight, xUseDom, root) {
-    var fps, fpsFilter, gameInterval, lastUpdate, r, xBackgroundCanvas, xGame_screen, _i, _len, _ref, _ref1, _ref2;
+    var fps, fpsFilter, gameInterval, lastUpdate, r, xBackgroundCanvas, xGame_screen, _i, _len, _ref, _ref1;
     if (xUseDom == null) {
       xUseDom = false;
     }
@@ -341,20 +440,33 @@ Version: Beta 1.0.0
     fps = 0;
     lastUpdate = Date.now();
     fpsFilter = 50;
-    this.basicFunctionsStart();
-    _ref2 = Idea.allRooms;
-    for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
-      r = _ref2[_i];
+    basicFunctionsStart();
+    for (_i = 0, _len = allRooms.length; _i < _len; _i++) {
+      r = allRooms[_i];
       r.renderBackPic();
     }
     game = {
       play: function() {
-        var fun,
+        var fun, module, objs, selector, value, values, _j, _k, _len1, _len2, _ref2,
           _this = this;
+        for (_j = 0, _len1 = modules.length; _j < _len1; _j++) {
+          module = modules[_j];
+          _ref2 = module.buffer;
+          for (selector in _ref2) {
+            values = _ref2[selector];
+            if (module.buffer.hasOwnProperty(selector)) {
+              objs = Idea(selector);
+              for (_k = 0, _len2 = values.length; _k < _len2; _k++) {
+                value = values[_k];
+                objs.on.apply(objs, value);
+              }
+            }
+          }
+        }
         fun = function() {
           var now, thisFrameFPS;
           gameInterval = requestAnimationFrame(fun);
-          if (Idea.assetsLoaded === Idea.assets.length) {
+          if (Idea.assetsLoaded === assets.length) {
             if (!_this.loaded) {
               _this.loaded = true;
               _this.finishLoad();
@@ -362,12 +474,12 @@ Version: Beta 1.0.0
             if (room != null) {
               room.refresh();
             }
-            Idea.basicFunctionsEnd();
+            basicFunctionsEnd();
             thisFrameFPS = 1000 / ((now = Date.now()) - lastUpdate);
             fps += (thisFrameFPS - fps) / fpsFilter;
             return lastUpdate = now;
           } else {
-            return _this.load(Idea.assetsLoaded / Idea.assets.length);
+            return _this.load(Idea.assetsLoaded / assets.length);
           }
         };
         return gameInterval = requestAnimationFrame(fun);
@@ -384,12 +496,12 @@ Version: Beta 1.0.0
       },
       load: function(progress) {
         var ctx, x, y;
-        ctx = Idea.getCanvasContext();
+        ctx = game_screen.getContext("2d");
         ctx.save();
-        ctx.fillStyle = Idea.settings.loadColor;
-        ctx.strokeStyle = Idea.settings.loadColor;
-        x = Idea.gameWidth() / 2 - 50;
-        y = Idea.gameHeight() / 2 - 25;
+        ctx.fillStyle = settings.loadColor;
+        ctx.strokeStyle = settings.loadColor;
+        x = gameWidth / 2 - 50;
+        y = gameHeight / 2 - 25;
         ctx.fillRect(x, y, progress * 100, 50);
         ctx.strokeRect(x, y, 100, 50);
         return ctx.restore();
@@ -406,7 +518,7 @@ Version: Beta 1.0.0
     return game;
   };
 
-  Idea.settings = {
+  Idea.settings = settings = {
     bufferDestroy: true,
     bufferRoomGoto: true,
     suppressAudioWarnings: false,
@@ -415,7 +527,16 @@ Version: Beta 1.0.0
     loadColor: "red"
   };
 
-  Idea.support = {
+  Idea.controls = controls = {
+    keyControls: function(fnDown, fnUp) {
+      return $(document).keydown(fnDown).keyup(fnUp);
+    },
+    mouseControls: function(fnDown, fnUp, fnMove) {
+      return $(game_screen).mousedown(fnDown).mouseup(fnUp).mousemove(fnMove);
+    }
+  };
+
+  Idea.support = support = {
     audio: "Audio" in window,
     canvas: ((_ref = document.createElement("canvas")) != null ? _ref.tagName : void 0) != null ? true : false
   };
@@ -445,15 +566,57 @@ Version: Beta 1.0.0
   };
 
   Idea.defineSettings = function(newSettings) {
-    return $.extend(this.settings, newSettings);
+    return $.extend(settings, newSettings);
   };
 
-  Idea.allObjects = [];
+  Idea.allObjects = allObjects = [];
+
+  trigger = function() {
+    var args, caller, fn, fns, methods, _i, _len, _results;
+    caller = arguments[0], methods = arguments[1], args = 3 <= arguments.length ? __slice.call(arguments, 2) : [];
+    fns = caller[methods];
+    switch ($.type(fns)) {
+      case "function":
+        return fns.apply(caller, args);
+      case "array":
+        _results = [];
+        for (_i = 0, _len = fns.length; _i < _len; _i++) {
+          fn = fns[_i];
+          _results.push(fn.apply(caller, args));
+        }
+        return _results;
+        break;
+      default:
+        return false;
+    }
+  };
+
+  triggerCollision = function() {
+    var args, caller, method, methods, _i, _len, _results;
+    caller = arguments[0], methods = arguments[1], args = 3 <= arguments.length ? __slice.call(arguments, 2) : [];
+    switch ($.type(methods)) {
+      case "function":
+        return methods.apply(caller, args);
+      case "array":
+        _results = [];
+        for (_i = 0, _len = methods.length; _i < _len; _i++) {
+          method = methods[_i];
+          _results.push(method.apply(caller, args));
+        }
+        return _results;
+        break;
+      default:
+        return false;
+    }
+  };
 
   Idea.gameObject = function(args, tags) {
     var gmInstance, newAngles;
     if (tags == null) {
       tags = [];
+    }
+    if (__indexOf.call(tags, "*") < 0) {
+      tags.push("*");
     }
     newAngles = function(x, y, degrees, centerX, centerY) {
       var theta, x2, y2;
@@ -487,6 +650,8 @@ Version: Beta 1.0.0
         if (this.useBackCan) {
           room.staticInst.push(this);
         }
+        this.animQueue = [];
+        this.currentQueue = 0;
         this.constructor = gmInstance;
         this.prevX = this.x = gx;
         this.prevY = this.y = gy;
@@ -513,18 +678,29 @@ Version: Beta 1.0.0
 
       gmInstance.prototype.visible = true;
 
+      gmInstance.prototype.animate = function(props, frames) {
+        if (frames == null) {
+          frames = 200;
+        }
+        this.animQueue.push([props, frames]);
+        return this;
+      };
+
       gmInstance.prototype.attr = function(str, value) {
         var key;
-        if ($.type(str) === "string") {
+        if ((value != null) && $.type(str) === "string") {
           this[str] = value;
+          return this;
         } else if ($.type(str) === "object") {
           for (key in str) {
             if (str.hasOwnProperty(key)) {
               this[key] = str[key];
             }
           }
+          return this;
+        } else {
+          return this[str];
         }
-        return this;
       };
 
       gmInstance.prototype.nullified = false;
@@ -532,7 +708,7 @@ Version: Beta 1.0.0
       gmInstance.prototype.destroy = function(buffer) {
         var ind, ind2, insts, obj, _ref1, _ref2;
         if (buffer == null) {
-          buffer = Idea.settings.bufferDestroy;
+          buffer = settings.bufferDestroy;
         }
         if (buffer) {
           room.toDestroy.push(this);
@@ -577,94 +753,33 @@ Version: Beta 1.0.0
         };
       };
 
-      gmInstance.prototype.moveUp = function(speed, callback, key) {
-        if (speed == null) {
-          speed = 1;
-        }
-        if (key == null) {
-          key = "up";
-        }
-        if ($.type(callback) === "string") {
-          key = callback;
-        }
-        this["keydown-" + key] = function() {
-          this.vy = -speed;
-          return typeof callback === "function" ? callback("up") : void 0;
-        };
-        this["keyup-" + key] = function() {
-          return this.vy = 0;
-        };
+      gmInstance.prototype.moveUp = function() {
+        var _ref1;
+        (_ref1 = this.constructor).moveUp.apply(_ref1, arguments);
         return this;
       };
 
-      gmInstance.prototype.moveDown = function(speed, callback, key) {
-        if (speed == null) {
-          speed = 1;
-        }
-        if (key == null) {
-          key = "down";
-        }
-        if ($.type(callback) === "string") {
-          key = callback;
-        }
-        this["keydown-" + key] = function() {
-          this.vy = speed;
-          return typeof callback === "function" ? callback("down") : void 0;
-        };
-        this["keyup-" + key] = function() {
-          return this.vy = 0;
-        };
+      gmInstance.prototype.moveDown = function() {
+        var _ref1;
+        (_ref1 = this.constructor).moveDown.apply(_ref1, arguments);
         return this;
       };
 
-      gmInstance.prototype.moveLeft = function(speed, callback, key) {
-        if (speed == null) {
-          speed = 1;
-        }
-        if (key == null) {
-          key = "left";
-        }
-        if ($.type(callback) === "string") {
-          key = callback;
-        }
-        this["keydown-" + key] = function() {
-          this.vx = -speed;
-          return typeof callback === "function" ? callback("left") : void 0;
-        };
-        this["keyup-" + key] = function() {
-          return this.vx = 0;
-        };
+      gmInstance.prototype.moveLeft = function() {
+        var _ref1;
+        (_ref1 = this.constructor).moveLeft.apply(_ref1, arguments);
         return this;
       };
 
-      gmInstance.prototype.moveRight = function(speed, callback, key) {
-        if (speed == null) {
-          speed = 1;
-        }
-        if (key == null) {
-          key = "right";
-        }
-        if ($.type(callback) === "string") {
-          key = callback;
-        }
-        this["keydown-" + key] = function() {
-          this.vx = speed;
-          return typeof callback === "function" ? callback("right") : void 0;
-        };
-        this["keyup-" + key] = function() {
-          return this.vx = 0;
-        };
+      gmInstance.prototype.moveRight = function() {
+        var _ref1;
+        (_ref1 = this.constructor).moveRight.apply(_ref1, arguments);
         return this;
       };
 
-      gmInstance.prototype.fourDirections = function(speed, callback, keys) {
-        if (keys == null) {
-          keys = ["up", "down", "left", "right"];
-        }
-        if ($.type(callback) === "array") {
-          keys = callback;
-        }
-        this.moveUp(speed, callback, keys[0]).moveDown(speed, callback, keys[1]).moveLeft(speed, callback, keys[2]).moveRight(speed, callback, keys[3]);
+      gmInstance.prototype.fourDirections = function() {
+        var _ref1;
+        (_ref1 = this.constructor).fourDirections.apply(_ref1, arguments);
         return this;
       };
 
@@ -718,32 +833,18 @@ Version: Beta 1.0.0
         return Math.sqrt(vx * vx + vy * vy);
       };
 
+      gmInstance.prototype.trigger = function() {
+        return trigger.apply(null, [this].concat(__slice.call(arguments)));
+      };
+
       gmInstance.prototype.events = function() {
-        var c, ctx, evalArray, i, ind, insideView, inst, insts, key, obj, _i, _j, _k, _l, _len, _len1, _len2, _len3, _name, _name1, _name2, _name3, _name4, _name5, _ref1, _ref2, _ref3, _ref4, _ref5,
+        var c, ctx, frames, i, ind, insideView, inst, insts, key, obj, prop, props, queue, toSplice, value, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref1, _ref2, _ref3, _ref4, _ref5,
           _this = this;
-        evalArray = function() {
-          var args, caller, fns, i, _i, _len, _results;
-          fns = arguments[0], caller = arguments[1], args = 3 <= arguments.length ? __slice.call(arguments, 2) : [];
-          switch ($.type(fns)) {
-            case "function":
-              return fns.apply(caller, args);
-            case "array":
-              _results = [];
-              for (_i = 0, _len = fns.length; _i < _len; _i++) {
-                i = fns[_i];
-                _results.push(i.apply(caller, args));
-              }
-              return _results;
-              break;
-            default:
-              return false;
-          }
-        };
         if (!this.created) {
           this.created = true;
-          evalArray(this.create, this);
+          trigger(this, "create");
         }
-        evalArray(this["begin step"], this);
+        trigger(this, "begin step");
         if (!useDom) {
           ctx = game_screen.getContext('2d');
         }
@@ -773,26 +874,42 @@ Version: Beta 1.0.0
         }
         if ((this.draw != null) && !this.useBackCan) {
           if (useDom) {
-            evalArray(this.draw, this, game_screen);
+            trigger(this, "draw", game_screen);
           } else {
             ctx.save();
             ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
             ctx.rotate(this.imgAngle * Math.PI / 180);
             ctx.scale(this.imgScaleX, this.imgScaleY);
             ctx.translate(-(this.x + this.width / 2), -(this.y + this.height / 2));
-            evalArray(this.draw, this, ctx);
+            trigger(this, "draw", ctx);
             ctx.restore();
           }
         }
         if (this.nullified) {
           return false;
         }
-        evalArray(this.step, this);
+        trigger(this, "step");
+        toSplice = [];
+        queue = this.animQueue[0];
+        if (queue) {
+          props = queue[0], frames = queue[1];
+          for (prop in props) {
+            value = props[prop];
+            this[prop] += (value - this[prop]) / frames;
+            if (Math.abs(this[prop] - props[prop]) < 0.001) {
+              delete props[prop];
+            }
+          }
+          queue[1]--;
+          if ($.isEmptyObject(queue[0])) {
+            this.animQueue.splice(0, 1);
+          }
+        }
         for (i in (_ref1 = this.collision) != null ? _ref1 : {}) {
           if (!this.collision.hasOwnProperty(i)) {
             continue;
           }
-          obj = Idea.allObjects[parseInt(i, 10)];
+          obj = allObjects[parseInt(i, 10)];
           _ref2 = room.allInstances[obj.objectId];
           for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
             inst = _ref2[_i];
@@ -801,40 +918,36 @@ Version: Beta 1.0.0
             }
             c = collisionRect(inst.mask(), this.mask());
             if (c) {
-              evalArray(this.collision[i], this, inst, c);
+              triggerCollision(this, this.collision[i], inst, c);
             }
           }
         }
         (function() {
-          var intr;
-          intr = _this["intersect boundary"];
           if (_this.x + _this.width > room.w) {
-            evalArray(intr, _this, "right");
+            trigger(_this, "intersect boundary", "right");
           }
           if (_this.y + _this.height > room.h) {
-            evalArray(intr, _this, "bottom");
+            trigger(_this, "intersect boundary", "bottom");
           }
           if (_this.x < 0) {
-            evalArray(intr, _this, "left");
+            trigger(_this, "intersect boundary", "left");
           }
           if (_this.y < 0) {
-            return evalArray(intr, _this, "top");
+            return trigger(_this, "intersect boundary", "top");
           }
         })();
         (function() {
-          var outs;
-          outs = _this["outside room"];
           if (_this.x > room.w) {
-            evalArray(outs, _this, "right");
+            trigger(_this, "outside room", "right");
           }
           if (_this.x + _this.width < 0) {
-            evalArray(outs, _this, "left");
+            trigger(_this, "outside room", "left");
           }
           if (_this.y > room.h) {
-            evalArray(outs, _this, "bottom");
+            trigger(_this, "outside room", "bottom");
           }
           if (_this.y + _this.height < 0) {
-            return evalArray(outs, _this, "top");
+            return trigger(_this, "outside room", "top");
           }
         })();
         (function() {
@@ -848,79 +961,67 @@ Version: Beta 1.0.0
           intr = _this["intersect view"];
           outs = _this["outside view"];
           if (_this.x + _this.width > theView.left) {
-            evalArray(intr, _this, "right");
+            trigger(_this, "intersect view", "right");
           }
           if (_this.y + _this.height > theView.bottom) {
-            evalArray(intr, _this, "bottom");
+            trigger(_this, "intersect view", "bottom");
           }
           if (_this.x < theView.x) {
-            evalArray(intr, _this, "left");
+            trigger(_this, "intersect view", "left");
           }
           if (_this.y < theView.y) {
-            evalArray(intr, _this, "top");
+            trigger(_this, "intersect view", "top");
           }
           if (_this.x > theView.w) {
-            evalArray(outs, _this, "right");
+            trigger(_this, "outside view", "right");
           }
           if (_this.x + _this.width < theView.x) {
-            evalArray(outs, _this, "left");
+            trigger(_this, "outside view", "left");
           }
           if (_this.y > theView.bottom) {
-            evalArray(outs, _this, "bottom");
+            trigger(_this, "outside view", "bottom");
           }
           if (_this.y + _this.height < theView.y) {
-            return evalArray(outs, _this, "top");
+            return trigger(_this, "outside view", "top");
           }
         })();
         _ref3 = Idea.globalKeysdown;
         for (_j = 0, _len1 = _ref3.length; _j < _len1; _j++) {
           key = _ref3[_j];
-          if (typeof this[_name = "keydown-" + (fromCharCode(key))] === "function") {
-            this[_name]();
-          }
+          trigger(this, "keydown-" + (fromCharCode(key)));
         }
         _ref4 = Idea.globalKeysup;
         for (_k = 0, _len2 = _ref4.length; _k < _len2; _k++) {
           key = _ref4[_k];
-          if (typeof this[_name1 = "keyup-" + (fromCharCode(key))] === "function") {
-            this[_name1]();
-          }
+          trigger(this, "keyup-" + (fromCharCode(key)));
         }
         _ref5 = Idea.globalKeyspressed;
         for (_l = 0, _len3 = _ref5.length; _l < _len3; _l++) {
           key = _ref5[_l];
-          if (typeof this[_name2 = "keypressed-" + (fromCharCode(key))] === "function") {
-            this[_name2]();
-          }
+          trigger(this, "keypressed-" + (fromCharCode(key)));
         }
         if (Idea.globalMousedown) {
-          if (typeof this[_name3 = "mousedown-" + Idea.globalMousedown] === "function") {
-            this[_name3]();
-          }
+          trigger(this, "mousedown-" + Idea.globalMousedown);
         }
         if (Idea.globalMousepressed) {
-          if (typeof this[_name4 = "mousepressed-" + Idea.globalMousepressed] === "function") {
-            this[_name4]();
-          }
+          trigger(this, "mousepressed-" + Idea.globalMousepressed);
         }
         if (Idea.globalMouseup) {
-          if (typeof this[_name5 = "mouseup-" + Idea.globalMouseup] === "function") {
-            this[_name5]();
-          }
+          trigger(this, "mouseup-" + Idea.globalMouseup);
         }
         this.prevX = this.x;
         this.prevY = this.y;
         this.x += this.vx;
         this.y += this.vy;
-        evalArray(this["end step"], this);
+        trigger(this, "end step");
       };
 
-      Idea.allObjects.push(gmInstance);
+      allObjects.push(gmInstance);
 
-      gmInstance.objectId = Idea.allObjects.length - 1;
+      gmInstance.objectId = allObjects.length - 1;
 
-      Idea.allRooms.forEach(function(v, i, l) {
-        return l[i].allInstances.push(instanceArray());
+      allRooms.forEach(function(v, i, l) {
+        return l[i].allInstances.push(new InstanceArray());
       });
 
       for (_i = 0, _len = tags.length; _i < _len; _i++) {
@@ -975,8 +1076,8 @@ Version: Beta 1.0.0
         if (this.collision == null) {
           this.collision = {};
         }
-        if ($.type(_with) === "object") {
-          _with = _width.objectId.toString();
+        if ($.type(_with) === "function") {
+          _with = _with.objectId.toString();
         }
         w = _with.split(", ");
         for (_j = 0, _len1 = w.length; _j < _len1; _j++) {
@@ -1015,7 +1116,193 @@ Version: Beta 1.0.0
         return this;
       };
 
+      gmInstance.moveUp = function(speed, callback, key) {
+        if (speed == null) {
+          speed = 1;
+        }
+        if (key == null) {
+          key = "up";
+        }
+        if ($.type(callback) === "string") {
+          key = callback;
+        }
+        this.on("keydown-" + key, function() {
+          this.vy = -speed;
+          return typeof callback === "function" ? callback("up") : void 0;
+        });
+        this.on("keyup-" + key, function() {
+          return this.vy = 0;
+        });
+        return this;
+      };
+
+      gmInstance.moveDown = function(speed, callback, key) {
+        if (speed == null) {
+          speed = 1;
+        }
+        if (key == null) {
+          key = "down";
+        }
+        if ($.type(callback) === "string") {
+          key = callback;
+        }
+        this.on("keydown-" + key, function() {
+          this.vy = speed;
+          return typeof callback === "function" ? callback("down") : void 0;
+        });
+        this.on("keyup-" + key, function() {
+          return this.vy = 0;
+        });
+        return this;
+      };
+
+      gmInstance.moveLeft = function(speed, callback, key) {
+        if (speed == null) {
+          speed = 1;
+        }
+        if (key == null) {
+          key = "left";
+        }
+        if ($.type(callback) === "string") {
+          key = callback;
+        }
+        this.on("keydown-" + key, function() {
+          this.vx = -speed;
+          return typeof callback === "function" ? callback("left") : void 0;
+        });
+        this.on("keyup-" + key, function() {
+          return this.vx = 0;
+        });
+        return this;
+      };
+
+      gmInstance.moveRight = function(speed, callback, key) {
+        if (speed == null) {
+          speed = 1;
+        }
+        if (key == null) {
+          key = "right";
+        }
+        if ($.type(callback) === "string") {
+          key = callback;
+        }
+        this.on("keydown-" + key, function() {
+          this.vx = speed;
+          return typeof callback === "function" ? callback("right") : void 0;
+        });
+        this.on("keyup-" + key, function() {
+          return this.vx = 0;
+        });
+        return this;
+      };
+
+      gmInstance.fourDirections = function(speed, callback, keys) {
+        if (keys == null) {
+          keys = ["up", "down", "left", "right"];
+        }
+        if ($.type(callback) === "array") {
+          keys = callback;
+        }
+        this.moveUp(speed, callback, keys[0]).moveDown(speed, callback, keys[1]).moveLeft(speed, callback, keys[2]).moveRight(speed, callback, keys[3]);
+        return this;
+      };
+
       $.extend(gmInstance.prototype, args);
+
+      gmInstance.off = function(_events, method) {
+        var event, events, index, isCollisionEvent, pr, subFire, _j, _k, _len1, _len2, _ref1, _ref2, _with;
+        events = _events.split(", ");
+        isCollisionEvent = "collision-with-";
+        for (_j = 0, _len1 = events.length; _j < _len1; _j++) {
+          event = events[_j];
+          if (event.indexOf(isCollisionEvent) === 0) {
+            _with = event.slice(isCollisionEvent.length);
+            if (typeof this.unbindCollision === "function") {
+              this.unbindCollision(_with, method);
+            }
+          } else if (method != null) {
+            if (method === this.prototype[event]) {
+              this.prototype[event] = null;
+            } else {
+              _ref1 = this.prototype[event];
+              for (index = _k = 0, _len2 = _ref1.length; _k < _len2; index = ++_k) {
+                subFire = _ref1[index];
+                if (subFire === method) {
+                  this.prototype[event].splice(index, 1);
+                  break;
+                }
+              }
+            }
+          } else {
+            pr = this.prototype[event];
+            if ($.type(pr) === "function") {
+              this.prototype[event] = null;
+            } else if ($.type(pr) === "array") {
+              if ((_ref2 = this.prototype[event]) != null) {
+                _ref2.splice(0, 9e9);
+              }
+            }
+          }
+        }
+        return this;
+      };
+
+      gmInstance.unbindCollision = function(_with, method) {
+        var ind, inst, oObj, obj, objs, pr, subFire, w, _j, _k, _l, _len1, _len2, _len3, _ref1, _results;
+        if ($.type(_with) === "function") {
+          _with = _with.objectId.toString();
+        }
+        w = _with.split(", ");
+        _results = [];
+        for (_j = 0, _len1 = w.length; _j < _len1; _j++) {
+          obj = w[_j];
+          if ((parseInt(obj, 10)) === (parseInt(obj, 10))) {
+            pr = this.prototype.collision[obj];
+            if (method != null) {
+              if (pr === method) {
+                this.prototype.collision[obj] = null;
+              } else {
+                for (ind = _k = 0, _len2 = pr.length; _k < _len2; ind = ++_k) {
+                  subFire = pr[ind];
+                  if (subFire === method) {
+                    this.prototype[event].splice(ind, 1);
+                    break;
+                  }
+                }
+              }
+            } else {
+              if ($.type(pr) === "function") {
+                this.prototype.collision[obj] = null;
+              } else if ($.type(pr) === "array") {
+                if ((_ref1 = this.prototype.collision[obj]) != null) {
+                  _ref1.splice(0, 9e9);
+                }
+              }
+            }
+          } else {
+            objs = Idea(obj);
+            for (_l = 0, _len3 = objs.length; _l < _len3; _l++) {
+              oObj = objs[_l];
+              this.unbindCollision(oObj, method);
+            }
+          }
+          if (room != null) {
+            _results.push((function() {
+              var _len4, _m, _ref2, _results1;
+              _ref2 = Idea(this);
+              _results1 = [];
+              for (_m = 0, _len4 = _ref2.length; _m < _len4; _m++) {
+                inst = _ref2[_m];
+                _results1.push(delete inst.collision);
+              }
+              return _results1;
+            }).call(this));
+          } else {
+            _results.push(void 0);
+          }
+        }
+        return _results;
+      };
 
       return gmInstance;
 
@@ -1027,7 +1314,7 @@ Version: Beta 1.0.0
     return byTags;
   };
 
-  Idea.assets = [];
+  Idea.assets = assets = [];
 
   Idea.assetsLoaded = 0;
 
@@ -1037,7 +1324,7 @@ Version: Beta 1.0.0
     return (new Audio()) || document.createElement("Audio");
   };
 
-  Idea.Sound = (function() {
+  Sound = (function() {
     Sound.prototype.trackID = 0;
 
     function Sound(src, numTracks, onload) {
@@ -1046,7 +1333,7 @@ Version: Beta 1.0.0
       if (numTracks == null) {
         numTracks = 3;
       }
-      if (!Idea.support.audio) {
+      if (!support.audio) {
         return;
       }
       this.unusedTracks = [];
@@ -1079,8 +1366,8 @@ Version: Beta 1.0.0
             src = maybes[1];
           }
           if (src == null) {
-            if (!Idea.settings.suppressAudioWarnings) {
-              console.warn("No audio file formats were found applicable");
+            if (!settings.suppressAudioWarnings) {
+              warn("No audio file formats were found applicable");
             }
             src = src[0];
           }
@@ -1099,8 +1386,8 @@ Version: Beta 1.0.0
         if (_this.sound.duration > 5 && _this.sound.src.substr(_this.sound.src.lastIndexOf(".") + 1) === "wav") {
           _this.tracks = [_this.sound];
           _this.unusedTracks = [0];
-          if (!Idea.settings.suppressAudioWarnings) {
-            console.warn("Wav files are too big to load many. (Only one track will be loaded.)                Convert to ogg or mp3");
+          if (!settings.suppressAudioWarnings) {
+            warn("Wav files are too big to load many. (Only one track will be loaded.)                Convert to ogg or mp3");
           }
         } else {
           _fn = function(ii) {
@@ -1114,7 +1401,7 @@ Version: Beta 1.0.0
           for (ii = _j = 0; _j < numTracks; ii = _j += 1) {
             _this.unusedTracks.push(ii);
             _this.tracks[ii] = newAudio();
-            Idea.assets.push(_this.tracks[ii]);
+            assets.push(_this.tracks[ii]);
             _fn(ii);
             _this.loadedTracks[ii] = false;
             _this.tracks[ii].src = src;
@@ -1125,7 +1412,7 @@ Version: Beta 1.0.0
       this.sound.src = src;
       this.sound.preload = true;
       this.sound.load();
-      Idea.assets.push(this.sound);
+      assets.push(this.sound);
     }
 
     Sound.prototype.play = function(trackId) {
@@ -1135,8 +1422,8 @@ Version: Beta 1.0.0
         trackId = this.trackID;
       }
       if (this.tracks[trackId] == null) {
-        if (!Idea.settings.suppressAudioWarnings) {
-          console.error("Not enough tracks");
+        if (!settings.suppressAudioWarnings) {
+          error("Not enough tracks");
         }
         return;
       }
@@ -1175,8 +1462,8 @@ Version: Beta 1.0.0
         trackId = this.trackID;
       }
       if (this.tracks[trackId] == null) {
-        if (!Idea.settings.suppressAudioWarnings) {
-          console.error("Not enough tracks");
+        if (!settings.suppressAudioWarnings) {
+          error("Not enough tracks");
         }
         return;
       }
@@ -1195,15 +1482,17 @@ Version: Beta 1.0.0
 
   })();
 
+  Idea.Sound = Sound;
+
   Idea.playingSounds = function() {
     return playingSounds;
   };
 
-  Idea.alarms = [];
+  Idea.alarms = alarms = [];
 
-  Idea.Alarm = (function() {
+  Alarm = (function() {
     function Alarm(frames, onFinish) {
-      Idea.alarms.push(this);
+      alarms.push(this);
       this.onEnd = onFinish != null ? [onFinish] : [];
       this.value = frames;
       this.startValue = frames;
@@ -1236,15 +1525,17 @@ Version: Beta 1.0.0
 
   })();
 
-  Idea.removeAlarm = function(alarm) {
+  Idea.Alarm = Alarm;
+
+  Idea.removeAlarm = removeAlarm = function(alarm) {
     var allAlarms;
-    allAlarms = Idea.alarms;
+    allAlarms = alarms;
     if ($.type(alarm) === "number") {
       return allAlarms.splice(alarm, 1);
     } else {
       if (__indexOf.call(allAlarms, alarm) < 0) {
-        if (!Idea.settings.suppressAlarmWarnings) {
-          console.error("Alarm not found!");
+        if (!settings.suppressAlarmWarnings) {
+          error("Alarm not found!");
         }
         return;
       }
@@ -1256,7 +1547,7 @@ Version: Beta 1.0.0
     var _results;
     _results = [];
     while (this.alarms[0]) {
-      _results.push(this.removeAlarm(0));
+      _results.push(removeAlarm(0));
     }
     return _results;
   };
@@ -1284,7 +1575,7 @@ Version: Beta 1.0.0
     return _results;
   };
 
-  Idea.Sprite = (function() {
+  Sprite = (function() {
     var createRepeating, ids, loadFunction, loadSrc, setSize;
 
     ids = 0;
@@ -1351,7 +1642,7 @@ Version: Beta 1.0.0
           }
         } else {
           if (args._useDom) {
-            throw new Error("DOM elements cannot have patterns");
+            error("DOM elements cannot have patterns", true);
           }
           pattern = context.createPattern(img, args.repeating === true ? "repeat" : args.repeating);
           context.rect(0, 0, _this.width, _this.height);
@@ -1362,7 +1653,7 @@ Version: Beta 1.0.0
         return (_ref1 = args.onload) != null ? _ref1.apply(_this) : void 0;
       };
       img.src = args.source;
-      Idea.assets.push(img);
+      assets.push(img);
       return img;
     };
 
@@ -1420,7 +1711,7 @@ Version: Beta 1.0.0
         });
       } else if (tiles != null) {
         if (_useDom) {
-          throw new Error("Cannot use tiles with DOM elements");
+          error("Cannot use tiles with DOM elements", true);
         }
         if ($.type(tiles[0]) !== "array") {
           offsetX = tiles[0] * tilesize;
@@ -1428,7 +1719,7 @@ Version: Beta 1.0.0
           this.screen.width = this.width = tiles[2] * tilesize;
           this.screen.height = this.height = tiles[3] * tilesize;
           _this = this;
-          newSource = new Idea.Sprite({
+          newSource = new Sprite({
             source: source,
             onload: function() {
               return this.draw(_this.screen.getContext("2d"), -offsetX, -offsetY, 1);
@@ -1443,7 +1734,7 @@ Version: Beta 1.0.0
             this.height = tiles[0][3] * tilesize;
           }
           this.imgs = tiles.map(function(tile) {
-            return new Idea.Sprite({
+            return new Sprite({
               source: source,
               width: _this.width,
               height: _this.height,
@@ -1461,10 +1752,10 @@ Version: Beta 1.0.0
       } else if ($.type(source) === "array") {
         this.type = "animation";
         if (_useDom) {
-          throw new Error("Cannot create animation with DOM elements");
+          error("Cannot create animation with DOM elements", true);
         }
         this.imgs = source.map(function(src) {
-          return new Idea.Sprite({
+          return new Sprite({
             source: src,
             width: _this.width,
             height: _this.height,
@@ -1539,6 +1830,8 @@ Version: Beta 1.0.0
 
   })();
 
+  Idea.Sprite = Sprite;
+
   collisionRect = function(a, b) {
     var bottom, left, min, right, top;
     if (!(a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y)) {
@@ -1563,30 +1856,33 @@ Version: Beta 1.0.0
     }
   };
 
-  Idea.basicFunctionsStart = function() {
-    var mDown;
-    Idea.basicFunctionsEnd();
+  basicFunctionsStart = function() {
+    var keyDownHandler, keyUpHandler, mDown, mouseDownHandler, mouseMoveHandler, mouseUpHandler;
+    basicFunctionsEnd();
     Idea.globalMouseX = Idea.globalMouseY = 0;
     Idea.globalKeysdown = [];
     Idea.globalMousedown = false;
     mDown = [];
     $(game_screen).contextmenu(function() {
       return false;
-    }).mousemove(function(e) {
-      Idea.globalMouseX = e.offsetX || e.pageX - $(this).offset().left;
-      Idea.globalMouseY = e.offsetY || e.pageY - $(this).offset().top;
-      return false;
-    }).mousedown(function(e) {
-      Idea.globalMousepressed = Idea.globalMousedown = e.which === 3 ? "right" : "left";
-      return false;
-    }).mouseup(function(e) {
-      Idea.globalMousedown = false;
-      Idea.globalMouseup = e.which === 3 ? "right" : "left";
-      return false;
     }).dblclick(function(e) {
       return false;
     });
-    $(document).keydown(function(e) {
+    mouseMoveHandler = function(e) {
+      Idea.globalMouseX = e.offsetX || e.pageX - $(this).offset().left;
+      Idea.globalMouseY = e.offsetY || e.pageY - $(this).offset().top;
+      return false;
+    };
+    mouseDownHandler = function(e) {
+      Idea.globalMousepressed = Idea.globalMousedown = e.which === 3 ? "right" : "left";
+      return false;
+    };
+    mouseUpHandler = function(e) {
+      Idea.globalMousedown = false;
+      Idea.globalMouseup = e.which === 3 ? "right" : "left";
+      return false;
+    };
+    keyDownHandler = function(e) {
       var d, p, w;
       d = Idea.globalKeysdown;
       p = Idea.globalKeyspressed;
@@ -1599,7 +1895,8 @@ Version: Beta 1.0.0
         mDown.push(w);
       }
       return false;
-    }).keyup(function(e) {
+    };
+    keyUpHandler = function(e) {
       var d, u, w;
       d = Idea.globalKeysdown;
       u = Idea.globalKeysup;
@@ -1610,16 +1907,18 @@ Version: Beta 1.0.0
       }
       d.splice(d.indexOf(w), 1);
       return false;
-    });
+    };
+    controls.mouseControls(mouseDownHandler, mouseUpHandler, mouseMoveHandler);
+    controls.keyControls(keyDownHandler, keyUpHandler);
   };
 
-  Idea.basicFunctionsEnd = function() {
+  basicFunctionsEnd = function() {
     Idea.globalKeysup = [];
     Idea.globalKeyspressed = [];
     Idea.globalMousepressed = Idea.globalMouseup = false;
   };
 
-  Idea.math = {
+  Idea.math = math = {
     distance: function(x1, y1, x2, y2) {
       var _ref1, _ref2, _ref3;
       if ($.type(x1) === "object" && $.type(y1) === "object") {
@@ -1672,9 +1971,9 @@ Version: Beta 1.0.0
     }
   };
 
-  Idea.allRooms = [];
+  Idea.allRooms = allRooms = [];
 
-  Idea.Room = (function() {
+  Room = (function() {
     function Room(args) {
       var backPic, repeating, _ref1, _ref2, _ref3, _ref4, _ref5;
       if (args == null) {
@@ -1687,8 +1986,8 @@ Version: Beta 1.0.0
       this.allInstances = [];
       this.staticInst = [];
       this.deactivated = [];
-      Idea.allRooms.push(this);
-      this.id = Idea.allRooms.length - 1;
+      allRooms.push(this);
+      this.id = allRooms.length - 1;
       this.dynamic = [];
       this.trx = 0;
       this["try"] = 0;
@@ -1717,12 +2016,12 @@ Version: Beta 1.0.0
             }
           };
           if (repeating) {
-            return new Idea.Sprite(backPic, this.w, this.h, repeating, function() {
+            return new Sprite(backPic, this.w, this.h, repeating, function() {
               return largePic.src = this.c.toDataURL();
             });
           }
         } else if (backPic != null) {
-          return this.backPic = new Idea.Sprite({
+          return this.backPic = new Sprite({
             source: backPic,
             width: this.w,
             height: this.h,
@@ -1825,7 +2124,7 @@ Version: Beta 1.0.0
     };
 
     Room.prototype.refresh = function(ctx) {
-      var alarm, f, i, inst, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref1, _ref2, _ref3, _ref4;
+      var alarm, f, i, inst, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref1, _ref2, _ref3;
       if (ctx == null) {
         ctx = useDom ? game_screen : game_screen.getContext('2d');
       }
@@ -1861,9 +2160,8 @@ Version: Beta 1.0.0
           room.view(-f.speedX, 0);
         }
       }
-      _ref2 = Idea.alarms;
-      for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
-        alarm = _ref2[_i];
+      for (_i = 0, _len = alarms.length; _i < _len; _i++) {
+        alarm = alarms[_i];
         if ((alarm != null ? alarm.value : void 0) > 0 && --alarm.value === 0) {
           alarm.value = -1;
           alarm.trigger();
@@ -1873,9 +2171,9 @@ Version: Beta 1.0.0
         ctx.save();
         ctx.translate(-this.trx, -this["try"]);
       }
-      _ref3 = room.allInstances;
-      for (_j = 0, _len1 = _ref3.length; _j < _len1; _j++) {
-        i = _ref3[_j];
+      _ref2 = room.allInstances;
+      for (_j = 0, _len1 = _ref2.length; _j < _len1; _j++) {
+        i = _ref2[_j];
         for (_k = 0, _len2 = i.length; _k < _len2; _k++) {
           inst = i[_k];
           if (inst != null) {
@@ -1888,14 +2186,14 @@ Version: Beta 1.0.0
       if (!useDom) {
         ctx.restore();
       }
-      _ref4 = this.toDestroy;
-      for (_l = 0, _len3 = _ref4.length; _l < _len3; _l++) {
-        inst = _ref4[_l];
+      _ref3 = this.toDestroy;
+      for (_l = 0, _len3 = _ref3.length; _l < _len3; _l++) {
+        inst = _ref3[_l];
         inst.destroy(false);
       }
       this.toDestroy = [];
       if (this.roomToGoTo) {
-        Idea.roomGoto(this.roomToGoTo, false);
+        roomGoto(this.roomToGoTo, false);
         this.roomToGoTo = false;
       }
     };
@@ -1939,18 +2237,20 @@ Version: Beta 1.0.0
 
   })();
 
-  Idea.roomGoto = function(newRoom, toBuffer, callback) {
-    var i, inst, prevRoom, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _ref1, _ref2, _ref3;
+  Idea.Room = Room;
+
+  Idea.roomGoto = roomGoto = function(newRoom, toBuffer, callback) {
+    var i, inst, prevRoom, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _ref1, _ref2;
     if (toBuffer == null) {
-      toBuffer = Idea.settings.bufferRoomGoto;
+      toBuffer = settings.bufferRoomGoto;
     }
     if (toBuffer && (room != null)) {
       room.roomToGoTo = newRoom;
       switch (newRoom) {
         case "next":
-          return Idea.allRooms[room.id + 1];
+          return allRooms[room.id + 1];
         case "previous":
-          return Idea.allRooms[room.id - 1];
+          return allRooms[room.id - 1];
         default:
           return newRoom;
       }
@@ -1969,20 +2269,19 @@ Version: Beta 1.0.0
       }
       $("div[class^='divSprite']").remove();
       if (!prevRoom.persistent) {
-        prevRoom.allInstances = instanceArray();
-        _ref2 = Idea.allObjects;
-        for (_k = 0, _len2 = _ref2.length; _k < _len2; _k++) {
-          i = _ref2[_k];
+        prevRoom.allInstances = new InstanceArray();
+        for (_k = 0, _len2 = allObjects.length; _k < _len2; _k++) {
+          i = allObjects[_k];
           prevRoom.allInstances.push([]);
         }
       }
     }
     switch (newRoom) {
       case "next":
-        room = Idea.allRooms[room.id + 1];
+        room = allRooms[room.id + 1];
         break;
       case "previous":
-        room = Idea.allRooms[room.id - 1];
+        room = allRooms[room.id - 1];
         break;
       default:
         room = newRoom;
@@ -1993,9 +2292,9 @@ Version: Beta 1.0.0
     if (typeof room.refreshBackground === "function") {
       room.refreshBackground();
     }
-    _ref3 = room.allInstances;
-    for (_l = 0, _len3 = _ref3.length; _l < _len3; _l++) {
-      i = _ref3[_l];
+    _ref2 = room.allInstances;
+    for (_l = 0, _len3 = _ref2.length; _l < _len3; _l++) {
+      i = _ref2[_l];
       for (_m = 0, _len4 = i.length; _m < _len4; _m++) {
         inst = i[_m];
         if (typeof inst.roomStart === "function") {
