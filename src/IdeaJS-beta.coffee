@@ -1,13 +1,45 @@
 ###
 Author: Praneeth Kolichala
 Copyright (c) unofficially 2012-2013
-Version: Beta 1.0.0
+Version: Beta 1.1.0
+New in this version:
+    - controls
+    - Modules
+    - All tags include "*"
+    - Changed moveRight, moveLeft, etc. to be methods of a gameObject rather than an instance
+    - @trigger method
+    - Added @unbindCollision and @off
 ###
 "use strict"
 if not jQuery?
     throw new Error "jQuery is not defined"
 
 $ = jQuery
+error = (string, deep = no) ->
+    if deep then throw new Error string
+    else console?.error? string
+    return
+warn = (string) ->
+    console?.warn? string
+class GameObjectArray extends Array
+    constructor: (original) ->
+        @push item for item in original
+    on: ->
+        for obj in this
+            obj.on arguments...
+        @
+    off: ->
+        for obj in this
+            obj.off arguments...
+        @
+    unbindCollision: ->
+        for obj in this
+            obj.unbindCollision arguments...
+        @
+    collides: ->
+        for obj in this
+            obj.collides arguments...
+        @
 Idea = (arg, n, d, f) ->
     theType = $.type arg
     nType = $.type n
@@ -19,28 +51,17 @@ Idea = (arg, n, d, f) ->
     )+ # Many times
     $ # End string
     ///
-    gameObjectArray = (original) ->
-        arr = original[..]
-        arr.on = ->
-            for obj in this
-                obj.on arguments...
-            @
-        arr.collides = ->
-            for obj in this
-                obj.collides arguments...
-            @
-        arr
-    if arg in Idea.allObjects and n in Idea.allRooms # If arg is one of the objects created by Idea.gameObject, return all instances of that object
+    if arg in allObjects and n in allRooms # If arg is one of the objects created by Idea.gameObject, return all instances of that object
         return n.allInstances[arg.objectId]
-    else if arg in Idea.allObjects and (nType is "undefined" or n is "current")
-        return Idea arg, Idea.getRoom()
+    else if arg in allObjects and (nType is "undefined" or n is "current")
+        return Idea arg, room
     else if theType is "undefined" or theType is "null" # If no arg is provided, return allObjects
-        return Idea.allObjects
+        return allObjects
     else if theType is "number" and nType is "undefined" # If arg is an id number, return that object
-        return Idea.allObjects[arg]
+        return allObjects[arg]
     else if theType is "number" and n is "current"
         return Idea Idea arg
-    else if theType is "number" and n in Idea.allRooms # If arg is an id number, but a room is provided, we know we are looking for an instance of that room
+    else if theType is "number" and n in allRooms # If arg is an id number, but a room is provided, we know we are looking for an instance of that room
         return Idea(Idea(arg), n)
     else if theType is "string"
         switch arg
@@ -59,10 +80,10 @@ Idea = (arg, n, d, f) ->
                 if isListOfNumbers.test arg # If arg is a list of numbers, we can assume that they are gameObject ids.
                     if nType is "undefined" # If a room isn't provided, return the raw gameObjects in a modified array
                         b = (Idea(parseInt(i, 10)) for i in arg.split(","))
-                        return gameObjectArray b
-                    else if n is "current" or n in Idea.allRooms # If a room is provided, return the instances in a modified array
+                        return new GameObjectArray b
+                    else if n is "current" or n in allRooms # If a room is provided, return the instances in a modified array
                         b = (parseInt(i, 10) for i in arg.split(","))
-                        newInsts = instanceArray()
+                        newInsts = new InstanceArray()
                         for obj in b
                             for inst in Idea obj, n
                                 newInsts.push inst
@@ -70,21 +91,21 @@ Idea = (arg, n, d, f) ->
                 else if theType is "string" and nType is "undefined" # If a different string is provided, assume it's the tag of a gameObject
                     b = byTags[arg]
                     if not b?
-                        console.error "Bad tag name" unless Idea.settings.suppressTagWarnings
+                        error "Bad tag name" unless settings.suppressTagWarnings
                         return
-                    gameObjectArray b # If no room is provided
-                else if theType is "string" and (n is "current" or n in Idea.allRooms)
+                    return new GameObjectArray b # If no room is provided
+                else if theType is "string" and (n is "current" or n in allRooms)
                     b = byTags[arg]
                     if not b?
-                        console.error "Bad tag name" unless Idea.settings.suppressTagWarnings
-                    newInsts = instanceArray() # If a room is provided
+                        error "Bad tag name" unless settings.suppressTagWarnings
+                    newInsts = new InstanceArray() # If a room is provided
                     for obj in b
                         for inst in Idea obj, n
                             newInsts.push inst
                     return newInsts
                 else
-                    throw new Error("Unrecognizable arguments")
-
+                    error "Unrecognizable arguments", yes
+Idea.version = "beta"
 fromCharCode = (chr) ->
     letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     from32to40 = "space,page up,page down,end,home,left,up,right,down".split ","
@@ -122,41 +143,53 @@ gameHeight = null
 game = null
 backgroundCanvas = null
 byTags = {}
-GetAndSet = (len, props...) ->
-    # Returns a modified array
-    # that has getters and setters for easy acces.
-    # This is implemented in instanceArray()
-    # For example:
-    # Idea(myObj).x = 5 --> Sets all of myObj's instances' x value to 5
-    # x = Idea(myObj).x --> Same as (x = Idea(myObj)[0].x)
-    # Idea(myObj).destroy() --> Destroys all instances of myObj
-    retVal = []
-    retVal.push {} for i in [0...len]
-    for prop in props
-        if prop[0..2] is "fn:"
-            fn = prop[3..]
-            do (fn) ->
-                retVal[fn] = ->
-                    for inst in this
-                        inst[fn] arguments...
-        else
-            do (prop = prop) ->
-                Object.defineProperty retVal, prop,
-                    set: (val) ->
-                        for i in this
-                            i[prop] = val
-                        return
-                    get: (val) ->
-                        this[0]?[prop]
-    retVal.attr = (prop, val) ->
-        for i in this
-            i.attr arguments...
+modules = []
+# A module is telling IdeaJS to call this code once game.play occurs
+# For example
+# Idea.module("platformer").on("collision-with-platform", function() {...});
+# For all future gameObjects created with a tag 'platformer', they will get the collision-with-platform event
+class Module
+    on: (events, fn, overwrite) ->
+        selector = @selector
+        buffer = @buffer
+        buffer[selector] ?= []
+        buffer[selector].push [events, fn, overwrite]
         this
-    return retVal
-instanceArray = ->
-    GetAndSet 0,
+    constructor: (@selector) ->
+        modules.push this
+        @buffer = {}
+Idea.module = (tag) ->
+    new Module tag
+class InstanceArray extends Array
+    constructor: -> super,
+    attr: (str, value) ->
+        if value? or $.type(str) is "object"
+            for inst in this
+                inst.attr arguments...
+            this
+        else
+            this[0].attr arguments...
+    props = [
         'x', 'y', 'vx', 'vy', 'useBackCan', 'deactivateOut', 'sprite', 'create', 'begin step', 'draw', 'step', 'end step', 'events', 'collision', 'visible'
-        'fn:destroy', 'fn:moveUp', 'fn:moveDown', 'fn:moveRight', 'fn:moveLeft', 'fn:fourDirections'
+    ]
+    fns = ['trigger', 'destroy', 'moveUp', 'moveDown', 'moveRight', 'moveLeft', 'fourDirections', 'animate']
+    for prop in props
+        do (prop) =>
+            Object.defineProperty @prototype, prop,
+                set: (val) ->
+                    for i in this
+                        i[prop] = val
+                    return
+                get: (val) ->
+                    this[0]?[prop]
+            return
+    for fn in fns
+        do (fn) =>
+            this::[fn] = ->
+                for inst in this
+                    inst[fn] arguments...
+                return this
+            return
 Idea.init = (xGameWidth, xGameHeight, xUseDom = no, root = "body") ->
     unless xUseDom
         # If useDom is false then append to canvases to root
@@ -203,37 +236,44 @@ Idea.init = (xGameWidth, xGameHeight, xUseDom = no, root = "body") ->
     fps = 0
     lastUpdate = Date.now()
     fpsFilter = 50
-    @basicFunctionsStart() # Start basic functions
-    r.renderBackPic() for r in Idea.allRooms # Now that the body has loaded, we can let the rooms load their background picture
+    basicFunctionsStart() # Start basic functions
+    r.renderBackPic() for r in allRooms # Now that the body has loaded, we can let the rooms load their background picture
     game =
         play: ->
+            # Load all modules
+            for module in modules
+                for selector, values of module.buffer
+                    if module.buffer.hasOwnProperty selector
+                        objs = Idea selector
+                        for value in values
+                            objs.on value...
             # Start the fun
             fun = =>
                 gameInterval = requestAnimationFrame fun
-                if Idea.assetsLoaded is Idea.assets.length # Check if all assets have loaded
+                if Idea.assetsLoaded is assets.length # Check if all assets have loaded
                     unless @loaded
                         @loaded = yes
                         @finishLoad()
                     room?.refresh() # Refresh the room
-                    Idea.basicFunctionsEnd() # End basic functions
+                    basicFunctionsEnd() # End basic functions
                     # Calculate fps
                     thisFrameFPS = 1000 / ((now = Date.now()) - lastUpdate)
                     fps += (thisFrameFPS - fps) / fpsFilter
                     lastUpdate = now
                 else
-                    @load Idea.assetsLoaded / Idea.assets.length # Otherwise, call the load function
+                    @load Idea.assetsLoaded / assets.length # Otherwise, call the load function
             gameInterval = requestAnimationFrame fun
         fps: -> if fps isnt fps then fps = 60 else fps # Hack for checking if fps is NaN
         pause: ->
             cancelAnimationFrame gameInterval
         load: (progress) ->
             # console.log("Loading: " + (progress * 100) + "%") --> User defined function
-            ctx = Idea.getCanvasContext()
+            ctx = game_screen.getContext "2d"
             ctx.save()
-            ctx.fillStyle = Idea.settings.loadColor
-            ctx.strokeStyle = Idea.settings.loadColor
-            x = Idea.gameWidth() / 2 - 50
-            y = Idea.gameHeight() / 2 - 25
+            ctx.fillStyle = settings.loadColor
+            ctx.strokeStyle = settings.loadColor
+            x = gameWidth / 2 - 50
+            y = gameHeight / 2 - 25
             ctx.fillRect x, y, progress * 100, 50
             ctx.strokeRect x, y, 100, 50
             ctx.restore()
@@ -248,15 +288,20 @@ Idea.init = (xGameWidth, xGameHeight, xUseDom = no, root = "body") ->
  
 Idea.game = -> game
 
-Idea.settings =
+Idea.settings = settings =
     bufferDestroy: yes
     bufferRoomGoto: yes
     suppressAudioWarnings: no
     suppressTagWarnings: no
     suppressAlarmWarnings: no
     loadColor: "red"
+Idea.controls = controls =
+    keyControls: (fnDown, fnUp) ->
+        $(document).keydown(fnDown).keyup(fnUp)
+    mouseControls: (fnDown, fnUp, fnMove) ->
+        $(game_screen).mousedown(fnDown).mouseup(fnUp).mousemove(fnMove)
 
-Idea.support =
+Idea.support = support =
     audio: "Audio" of window
     canvas: if document.createElement("canvas")?.tagName? then yes else no
 
@@ -273,15 +318,33 @@ Idea.getBackgroundCanvas = -> backgroundCanvas
 Idea.gameWidth = -> gameWidth
 Idea.gameHeight = -> gameHeight
 Idea.defineSettings = (newSettings) ->
-    $.extend @settings, newSettings
-Idea.allObjects = []
+    $.extend settings, newSettings
+Idea.allObjects = allObjects = []
+trigger = (caller, methods, args...) ->
+    fns = caller[methods]
+    switch $.type(fns)
+        when "function" then fns.apply caller, args
+        when "array"
+            for fn in fns
+                fn.apply caller, args
+        else no
+triggerCollision = (caller, methods, args...) ->
+    switch $.type(methods)
+        when "function" then methods.apply caller, args
+        when "array"
+            for method in methods
+                method.apply caller, args
+        else no
+
+
+newAngles = (x, y, degrees, centerX, centerY) ->
+    # Compute the bounding box coordinates of a rotated sprite
+    theta = degrees / 360 * (Math.PI * 2)
+    x2 = centerX + (x - centerX) * Math.cos(Math.PI * 2 - theta) + (y - centerY) * Math.sin(Math.PI * 2 - theta)
+    y2 = centerY - (x - centerX) * Math.sin(Math.PI * 2 - theta) + (y - centerY) * Math.cos(Math.PI * 2 - theta)
+    [x2, y2]
 Idea.gameObject = (args, tags = []) ->
-    newAngles = (x, y, degrees, centerX, centerY) ->
-        # Compute the bounding box coordinates of a rotated sprite
-        theta = degrees / 360 * (Math.PI * 2)
-        x2 = centerX + (x - centerX) * Math.cos(Math.PI * 2 - theta) + (y - centerY) * Math.sin(Math.PI * 2 - theta)
-        y2 = centerY - (x - centerX) * Math.sin(Math.PI * 2 - theta) + (y - centerY) * Math.cos(Math.PI * 2 - theta)
-        [x2, y2]
+    tags.push "*" unless "*" in tags
     class gmInstance # A single instance
         constructor: (gx, gy) ->
             if @sprite?.useDom then @statics = @useBackCan = no # If we useDom, then having statics or useBackCan doesn't make sense
@@ -306,6 +369,8 @@ Idea.gameObject = (args, tags = []) ->
             room.allInstances[gmInstance.objectId].push @
             # If we use the background canvas, add us to room.staticInst
             room.staticInst.push @ if @useBackCan
+            @animQueue = []
+            @currentQueue = 0
             @constructor = gmInstance
             @prevX = @x = gx
             @prevY = @y = gy
@@ -322,14 +387,20 @@ Idea.gameObject = (args, tags = []) ->
         useBackCan: no
         deactivateOut: no
         visible: yes
+        animate: (props, frames = 200) ->
+            @animQueue.push [props, frames]
+            this
         attr: (str, value) ->
-            if $.type(str) is "string"
+            if value? and $.type(str) is "string"
                 this[str] = value
+                this
             else if $.type(str) is "object"
                 this[key] = str[key] for key of str when str.hasOwnProperty(key)
-            this
+                this
+            else
+                @[str]
         nullified: no
-        destroy: (buffer = Idea.settings.bufferDestroy) -> # Destroy an instance
+        destroy: (buffer = settings.bufferDestroy) -> # Destroy an instance
             if buffer
                 # If we are supposed to buffer, then let the room destroy us at the end of the frame
                 # Buffering has many advantages:
@@ -362,46 +433,21 @@ Idea.gameObject = (args, tags = []) ->
                 width: (Math.max newangles[0], newangles2[0], newangles3[0], newangles4[0]) - objx
                 height: (Math.max newangles[1], newangles2[1], newangles3[1], newangles4[1]) - objy
             }
-         moveUp: (speed = 1, callback, key = "up") -> # Shortcut to assign an event handler for moving up
-            if $.type(callback) is "string" then key = callback
-            @["keydown-#{key}"] = ->
-                @vy = -speed
-                callback?("up")
-            @["keyup-#{key}"] = ->
-                @vy = 0
-            @
-        moveDown: (speed = 1, callback, key = "down") -> # Shortcut to assign an event handler for moving down
-            if $.type(callback) is "string" then key = callback
-            @["keydown-#{key}"] = ->
-                @vy = speed
-                callback?("down")
-            @["keyup-#{key}"] = ->
-                @vy = 0
-            @
-        moveLeft: (speed = 1, callback, key = "left") -> # Shortcut to assign an event handler for moving left
-            if $.type(callback) is "string" then key = callback
-            @["keydown-#{key}"] = ->
-                @vx = -speed
-                callback?("left")
-            @["keyup-#{key}"] = ->
-                @vx = 0
-            @
-        moveRight: (speed = 1, callback, key = "right") -> # Shortcut to assign an event handler for moving right
-            if $.type(callback) is "string" then key = callback
-            @["keydown-#{key}"] = ->
-                @vx = speed
-                callback?("right")
-            @["keyup-#{key}"] = ->
-                @vx = 0
-            @
-        fourDirections: (speed, callback, keys = ["up", "down", "left", "right"]) -> # Shortcut to assign an event handler for moving in all four directions
-            if $.type(callback) is "array" then keys = callback
-            @
-            .moveUp(speed, callback, keys[0])
-            .moveDown(speed, callback, keys[1])
-            .moveLeft(speed, callback, keys[2])
-            .moveRight(speed, callback, keys[3])
-            @
+        moveUp: ->
+            @constructor.moveUp arguments...
+            return this
+        moveDown: ->
+            @constructor.moveDown arguments...
+            return this
+        moveLeft: ->
+            @constructor.moveLeft arguments...
+            return this
+        moveRight: ->
+            @constructor.moveRight arguments...
+            return this
+        fourDirections: ->
+            @constructor.fourDirections arguments...
+            return this
         stopMovement: -> # Stops movement and jumps back to last position (that was presumably safe)
                 @vx = @vy = 0
                 @x = @prevX
@@ -428,23 +474,14 @@ Idea.gameObject = (args, tags = []) ->
         speed: (vx = @vx, vy = @vy) ->
             # Calculates the total speed of the instance
             Math.sqrt vx * vx + vy * vy
+        trigger: -> trigger this, arguments...
         events: ->
             # Calls all the events
-            evalArray = (fns, caller, args...) ->
-                # This is used to call the events
-                # If fns is an array, then call each functions inside fns
-                # Otherwise, just call fns
-                return switch $.type(fns)
-                    when "function" then fns.apply caller, args
-                    when "array"
-                        for i in fns
-                            i.apply caller, args
-                    else no
             unless @created # If we haven't been created, then call the create method
                 @created = yes
-                evalArray @create, this
+                trigger this, "create"
             # The begin step event is called every frame (before anything else.)
-            evalArray @["begin step"], this # Call the begin step event
+            trigger this, "begin step" # Call the begin step event
             ctx = game_screen.getContext '2d' unless useDom # Grab the context
             insideView = collisionRect @mask(), do -> # Check if we are inside the view
                     v = room.view()
@@ -465,41 +502,50 @@ Idea.gameObject = (args, tags = []) ->
             if insideView and @deactivateOut and useDom then $(".divSprite#{@sprite.id}:eq(#{@id - 1})").css "display", "block"
             if @draw? and not @useBackCan # If the draw method is there and we are using the foreground canvas
                 if useDom # If we are using DOM elements, we can't perform transformations.
-                    evalArray @draw, @, game_screen
+                    trigger this, "draw", game_screen
                 else # Otherwise
                     ctx.save() # Save canvas state
                     ctx.translate @x + @width/2, @y + @height/2 # Translate such that the rotation occurs in the center
                     ctx.rotate @imgAngle * Math.PI / 180 # Translate by @imgAngle degrees
                     ctx.scale @imgScaleX, @imgScaleY
                     ctx.translate -(@x + @width/2), -(@y + @height/2) # Undo translate
-                    evalArray @draw, @, ctx
+                    trigger this, "draw", ctx
                     ctx.restore()
             # Nullified means that we no longer perform events, but we would like to still be drawn
             # This is useful for e.g. death or birth animations.
             if @nullified then return no
             # The step event occurs every frame
-            evalArray @step, @ # Call the step event
+            trigger this, "step"
+            toSplice = []
+            queue = @animQueue[0]
+            if queue
+                [props, frames] = queue
+                for prop, value of props
+                    this[prop] += (value - this[prop]) / frames
+                    if Math.abs(this[prop] - props[prop]) < 0.001
+                        delete props[prop]
+                queue[1]--
+                if $.isEmptyObject(queue[0])
+                    @animQueue.splice 0, 1
             for i of @collision ? {} # Loop though each key of @collision
                 continue unless @collision.hasOwnProperty i # Skip properties inherited from Object.prototype
-                obj = Idea.allObjects[parseInt i, 10]
+                obj = allObjects[parseInt i, 10]
                 for inst in room.allInstances[obj.objectId]
                     continue if inst.nullified
                     c = collisionRect inst.mask(), @mask() # If a collision occurs between our mask and its mask
-                    if c then evalArray @collision[i], @, inst, c # Then call the collision event(s)
+                    if c then triggerCollision this, @collision[i], inst, c # Then call the collision event(s)
             do =>
                 # Do we intersect the room's boundary?
-                intr = @["intersect boundary"]
-                if @x + @width > room.w then evalArray intr, @, "right"
-                if @y + @height > room.h then evalArray intr, @, "bottom"
-                if @x < 0 then evalArray intr, @, "left"
-                if @y < 0 then evalArray intr, @, "top"
+                if @x + @width > room.w then trigger this, "intersect boundary", "right"
+                if @y + @height > room.h then trigger this, "intersect boundary", "bottom"
+                if @x < 0 then trigger this, "intersect boundary", "left"
+                if @y < 0 then trigger this, "intersect boundary", "top"
             do =>
                 # Are we outside the room's view
-                outs = @["outside room"]
-                if @x > room.w then evalArray outs, @, "right"
-                if @x + @width < 0 then evalArray outs, @, "left"
-                if @y > room.h then evalArray outs, @, "bottom"
-                if @y + @height < 0 then evalArray outs, @, "top"
+                if @x > room.w then trigger this, "outside room", "right"
+                if @x + @width < 0 then trigger this, "outside room", "left"
+                if @y > room.h then trigger this, "outside room", "bottom"
+                if @y + @height < 0 then trigger this, "outside room", "top"
             do =>
                 theView =
                     x: room.view()[0]
@@ -509,24 +555,24 @@ Idea.gameObject = (args, tags = []) ->
                 intr = @["intersect view"]
                 outs = @["outside view"]
                 # Intersect view
-                if @x + @width > theView.left then evalArray intr, @, "right"
-                if @y + @height > theView.bottom then evalArray intr, @, "bottom"
-                if @x < theView.x then evalArray intr, @, "left"
-                if @y < theView.y then evalArray intr, @, "top"
+                if @x + @width > theView.left then trigger this, "intersect view", "right"
+                if @y + @height > theView.bottom then trigger this, "intersect view", "bottom"
+                if @x < theView.x then trigger this, "intersect view", "left"
+                if @y < theView.y then trigger this, "intersect view", "top"
                 # Outside view
-                if @x > theView.w then evalArray outs, @, "right"
-                if @x + @width < theView.x then evalArray outs, @, "left"
-                if @y > theView.bottom then evalArray outs, @, "bottom"
-                if @y + @height < theView.y then evalArray outs, @, "top"
+                if @x > theView.w then trigger this, "outside view", "right"
+                if @x + @width < theView.x then trigger this, "outside view", "left"
+                if @y > theView.bottom then trigger this, "outside view", "bottom"
+                if @y + @height < theView.y then trigger this, "outside view", "top"
             for key in Idea.globalKeysdown
-                @["keydown-#{fromCharCode key}"]?()
+                trigger this, "keydown-#{fromCharCode key}"
             for key in Idea.globalKeysup
-                @["keyup-#{fromCharCode key}"]?()
+                trigger this, "keyup-#{fromCharCode key}"
             for key in Idea.globalKeyspressed
-                @["keypressed-#{fromCharCode key}"]?()
-            @["mousedown-#{Idea.globalMousedown}"]?() if Idea.globalMousedown
-            @["mousepressed-#{Idea.globalMousepressed}"]?() if Idea.globalMousepressed
-            @["mouseup-#{Idea.globalMouseup}"]?() if Idea.globalMouseup
+                trigger this, "keypressed-#{fromCharCode key}"
+            trigger this, "mousedown-#{Idea.globalMousedown}" if Idea.globalMousedown
+            trigger this, "mousepressed-#{Idea.globalMousepressed}" if Idea.globalMousepressed
+            trigger this, "mouseup-#{Idea.globalMouseup}" if Idea.globalMouseup
 
             @prevX = @x
             @prevY = @y
@@ -534,13 +580,13 @@ Idea.gameObject = (args, tags = []) ->
             @x += @vx
             @y += @vy
             # The end step event occurs at the end of each instances events
-            evalArray @["end step"], @
+            trigger this, "end step"
             return
         # (Now this refers to the gmInstance)
-        Idea.allObjects.push this # Add gmInstance to our collection of gameObjects
-        @objectId = Idea.allObjects.length - 1
-        Idea.allRooms.forEach (v, i, l) -> # Add a new instanceArray() to each room's allInstances. (That represents our instances)
-            l[i].allInstances.push instanceArray()
+        allObjects.push this # Add gmInstance to our collection of gameObjects
+        @objectId = allObjects.length - 1
+        allRooms.forEach (v, i, l) -> # Add a new InstanceArray() to each room's allInstances. (That represents our instances)
+            l[i].allInstances.push new InstanceArray()
 
         # Tags are a convenient way to refer to a gameObject
         # If two gameObjects both contain "enemy" in there tag definitions,
@@ -579,7 +625,7 @@ Idea.gameObject = (args, tags = []) ->
             this
         @collides = (_with, fn, overwrite = no) ->
             @collision ?= {}
-            if ($.type(_with) is "object") then _with = _width.objectId.toString()
+            if ($.type(_with) is "function") then _with = _with.objectId.toString()
             w = _with.split ", "
             for obj in w
                 if (parseInt obj, 10) is (parseInt obj, 10)
@@ -601,20 +647,106 @@ Idea.gameObject = (args, tags = []) ->
                     for inst in Idea(this)
                         delete inst.collision
             this
+        @moveUp = (speed = 1, callback, key = "up") -> # Shortcut to assign an event handler for moving up
+            if $.type(callback) is "string" then key = callback
+            @on "keydown-#{key}", ->
+                @vy = -speed
+                callback?("up")
+            @on "keyup-#{key}", ->
+                @vy = 0
+            @
+        @moveDown = (speed = 1, callback, key = "down") -> # Shortcut to assign an event handler for moving down
+            if $.type(callback) is "string" then key = callback
+            @on "keydown-#{key}", ->
+                @vy = speed
+                callback?("down")
+            @on "keyup-#{key}", ->
+                @vy = 0
+            @
+        @moveLeft = (speed = 1, callback, key = "left") -> # Shortcut to assign an event handler for moving left
+            if $.type(callback) is "string" then key = callback
+            @on "keydown-#{key}", ->
+                @vx = -speed
+                callback?("left")
+            @on "keyup-#{key}", ->
+                @vx = 0
+            @
+        @moveRight = (speed = 1, callback, key = "right") -> # Shortcut to assign an event handler for moving right
+            if $.type(callback) is "string" then key = callback
+            @on "keydown-#{key}", ->
+                @vx = speed
+                callback?("right")
+            @on "keyup-#{key}", ->
+                @vx = 0
+            @
+        @fourDirections = (speed, callback, keys = ["up", "down", "left", "right"]) ->
+            # Shortcut to assign an event handler for moving in all four directions
+            if $.type(callback) is "array" then keys = callback
+            @
+            .moveUp(speed, callback, keys[0])
+            .moveDown(speed, callback, keys[1])
+            .moveLeft(speed, callback, keys[2])
+            .moveRight(speed, callback, keys[3])
+            @
         # The arguments that are provided simply override the existing ones
         # So, any arguments that you define go directly to @prototype
         $.extend @prototype, args
+        @off = (_events, method) ->
+            events = _events.split ", "
+            isCollisionEvent = "collision-with-"
+            for event in events
+                if event.indexOf(isCollisionEvent) is 0
+                    _with = event[isCollisionEvent.length..]
+                    @unbindCollision? _with, method
+                else if method?
+                    if method is @prototype[event] then @prototype[event] = null
+                    else
+                        for subFire, index in @prototype[event]
+                            if subFire is method
+                                @prototype[event].splice index, 1
+                                break
+                else
+                    pr = @prototype[event]
+                    if $.type(pr) is "function" then @prototype[event] = null
+                    else if $.type(pr) is "array" then @prototype[event]?.splice 0, 9e9
+            this
+        @unbindCollision = (_with, method)  ->
+            if $.type(_with) is "function" then _with = _with.objectId.toString()
+            w = _with.split(", ")
+            for obj in w
+                if (parseInt obj, 10) is (parseInt obj, 10)
+                    # obj is a number
+                    pr = @prototype.collision[obj]
+                    if method?
+                        if pr is method then @prototype.collision[obj] = null
+                        else
+                            for subFire, ind in pr
+                                if subFire is method
+                                    @prototype[event].splice ind, 1
+                                    break
+                    else
+                        if $.type(pr) is "function" then @prototype.collision[obj] = null
+                        else if $.type(pr) is "array" then @prototype.collision[obj]?.splice 0, 9e9
+                else
+                    # obj is a tag name
+                    objs = Idea obj
+                    for oObj in objs
+                        # for each gameObject in objs
+                        @unbindCollision oObj, method
+                if room?
+                    for inst in Idea(this)
+                        delete inst.collision
     gmInstance
 
 # You probably won't need this function, but it returns the byTags object
 # A better way to get the object(s) associated with a tag name is simply Idea(myTagName)
 Idea.getByTags = -> byTags
-Idea.assets = []
+Idea.assets = assets = []
 Idea.assetsLoaded = 0
 playingSounds = []
 newAudio = ->
     (new Audio()) or document.createElement "Audio"
-class Idea.Sound
+class Sound
     # TrackID is the default id that we'll go with if no other id is provided
     # Since there are multiple tracks,
     # mySound.play(0);
@@ -626,7 +758,7 @@ class Idea.Sound
     # Then trackID becomes 2, so the next time you play it, it will play mySound.tracks[2]
     trackID: 0
     constructor: (src, numTracks = 3, onload) ->
-        return unless Idea.support.audio # Silently fail if no audio support
+        return unless support.audio # Silently fail if no audio support
         @unusedTracks = [] # The track ids that haven't been used
         @tracks = [] # All tracks
         @loadedTracks = []
@@ -651,7 +783,7 @@ class Idea.Sound
                 if src.substr(src.lastIndexOf(".") + 1) is "wav" and maybes[1]?
                     src = maybes[1]
                 if not src?
-                    console.warn "No audio file formats were found applicable" unless Idea.settings.suppressAudioWarnings
+                    warn "No audio file formats were found applicable" unless settings.suppressAudioWarnings
                     src = src[0]
         $(@sound).on "canplaythrough", =>
             if @loaded then return
@@ -663,14 +795,14 @@ class Idea.Sound
                 # With bigger files, we don't want to load too much
                 @tracks = [@sound]
                 @unusedTracks = [0]
-                console.warn "Wav files are too big to load many. (Only one track will be loaded.)
-                Convert to ogg or mp3" unless Idea.settings.suppressAudioWarnings
+                warn "Wav files are too big to load many. (Only one track will be loaded.)
+                Convert to ogg or mp3" unless settings.suppressAudioWarnings
             else
                 for ii in [0...numTracks] by 1
                     # Load a new track until numTracks tracks have been loaded
                     @unusedTracks.push ii
                     @tracks[ii] = newAudio()
-                    Idea.assets.push @tracks[ii]
+                    assets.push @tracks[ii]
                     do (ii) =>
                         $(@tracks[ii]).on "canplaythrough", =>
                             unless @loadedTracks[ii]
@@ -685,10 +817,10 @@ class Idea.Sound
         @sound.src = src
         @sound.preload = on
         @sound.load()
-        Idea.assets.push @sound
+        assets.push @sound
     play: (trackId = @trackID) ->
         unless @tracks[trackId]? # There are no tracks left
-            console.error "Not enough tracks" unless Idea.settings.suppressAudioWarnings
+            error "Not enough tracks" unless settings.suppressAudioWarnings
             return
         @tracks[trackId].play() # Play the sound
         $(@tracks[trackId]).on "ended pause", =>
@@ -708,7 +840,7 @@ class Idea.Sound
         @unusedTracks
     loop: (trackId = @trackID) ->
         unless @tracks[trackId]? # There are no tracks left
-            console.error "Not enough tracks" unless Idea.settings.suppressAudioWarnings
+            error "Not enough tracks" unless settings.suppressAudioWarnings
             return
         @tracks[trackId].loop = on
         @tracks[trackId].play()
@@ -720,17 +852,17 @@ class Idea.Sound
         spliced = @unusedTracks.splice(@unusedTracks.indexOf(trackId), 1)[0]
         @trackID = @unusedTracks[0]
         trackId
-
+Idea.Sound = Sound
 Idea.playingSounds = -> playingSounds
-Idea.alarms = []
+Idea.alarms = alarms = []
 # An alarm is a delay type function
 # It works better than setTimeout, because it will
 # pause when the game is paused.
 # Also, it is step-based, so that it is independent of the fps
 # A slower computer's gameplay will not be affected too much
-class Idea.Alarm
+class Alarm
     constructor: (frames, onFinish) ->
-        Idea.alarms.push this # Add to Idea.alarms
+        alarms.push this # Add to Idea.alarms
         @onEnd = if onFinish? then [onFinish] else []
         @value = frames # Value
         @startValue = frames # When you start over, this is default value
@@ -748,20 +880,21 @@ class Idea.Alarm
             fn.call this
         this
 
-Idea.removeAlarm = (alarm) ->
+Idea.Alarm = Alarm
+Idea.removeAlarm = removeAlarm = (alarm) ->
     # Removes a given alarm
-    allAlarms = Idea.alarms
+    allAlarms = alarms
     if $.type(alarm) is "number"
         # If alarm is a number, it must be an alarm id
         allAlarms.splice alarm, 1
     else
         # If alarm is an alarm, make sure it is in allAlarms, then remove it.
         if alarm not in allAlarms
-            console.error("Alarm not found!") unless Idea.settings.suppressAlarmWarnings
+            error("Alarm not found!") unless settings.suppressAlarmWarnings
             return
         allAlarms.splice allAlarms.indexOf(alarm), 1
 
-Idea.removeAllAlarms = -> @removeAlarm(0) while @alarms[0]
+Idea.removeAllAlarms = -> removeAlarm(0) while @alarms[0]
 Idea.animation = (divider, x, y, width, height) ->
     # Animation should be inserted in the tiles property of a sprite
     if $.type(divider) is "object"
@@ -773,7 +906,7 @@ Idea.animation = (divider, x, y, width, height) ->
         height = y
         x = y = 0
     [x + w, y, divider, height] for w in [0...width] by divider
-class Idea.Sprite
+class Sprite
     # A sprite is any image in the game
     # All sprites have a screen property
     # The screen property is a canvas that is redrawn onto the screen
@@ -826,7 +959,7 @@ class Idea.Sprite
                 newCanvas.height = @height
                 if args._useDom then newCanvas.appendChild img else context.drawImage img, 0, 0, @width, @height
             else
-                if args._useDom then throw new Error "DOM elements cannot have patterns"
+                if args._useDom then error "DOM elements cannot have patterns", yes
                 pattern = context.createPattern img, if args.repeating is yes then "repeat" else args.repeating
                 context.rect 0, 0, @width, @height
                 context.fillStyle = pattern
@@ -834,15 +967,15 @@ class Idea.Sprite
             Idea.assetsLoaded += 1 # Increase the number of assets loaded
             args.onload?.apply this # Call the onload function
         img.src = args.source # Set the source
-        Idea.assets.push img # Add it to Idea.assets
+        assets.push img # Add it to assets
         img
 
     constructor: (args) ->
         @id = ids
         ids++
         # Allows for two syntaxes:
-        # 1) new Idea.Sprite("mysource.png");
-        # 2) new Idea.Sprite({
+        # 1) new Sprite("mysource.png");
+        # 2) new Sprite({
         #   source: "mysource.png",
         #   width: myWidth,
         #   height: myHeight,
@@ -870,19 +1003,19 @@ class Idea.Sprite
         else if tiles?
             # The tiles property allows to get a sprite from a certain area of a tileset.
             # The syntax is as follows:
-            # new Idea.Sprite({
+            # new Sprite({
             #   source: "tileset.png",
             #   tilesize: 16,
             #   tiles: [x, y, width, height]
             # });
             # OR for an animation
-            # new Idea.Sprite({
+            # new Sprite({
             #   source: "tileset.png",
             #   tilesize: 16,
             #   // --> Use Idea.animation as a shortcut for generating this array
             #   tiles: [[frame1.x, frame1.y, frame1.width, frame1.height], [frame2.x, frame2.y...]... ]
             # });
-            if _useDom then throw new Error "Cannot use tiles with DOM elements"
+            if _useDom then error "Cannot use tiles with DOM elements", yes
             if $.type(tiles[0]) isnt "array" # Check if it isn't a tile animation
                 # Simply load that section of the image
                 offsetX = tiles[0] * tilesize # Calculate the x offset
@@ -891,7 +1024,7 @@ class Idea.Sprite
                 @screen.width = @width = tiles[2] * tilesize
                 @screen.height = @height = tiles[3] * tilesize
                 _this = this
-                newSource = new Idea.Sprite {
+                newSource = new Sprite {
                     source # Same source:
                     onload: -> # Once it has loaded
                         @draw _this.screen.getContext("2d"), -offsetX, -offsetY, 1 # Draw it on OUR screen, so that we may have it
@@ -904,20 +1037,20 @@ class Idea.Sprite
                 # With each tile array, create a new sprite
                 # This is the same as an array animation
                 @imgs = tiles.map (tile) =>
-                    new Idea.Sprite {source, @width, @height, repeating, onload, @speed, _useDom, tilesize, tiles: tile}
+                    new Sprite {source, @width, @height, repeating, onload, @speed, _useDom, tilesize, tiles: tile}
                 @imgInd = 0
                 @type = "animation"
         else if $.type(source) is "array"
             # This a basic animation where you're loading many frames from different sources (usually not recommended because of load time.)
             # For example:
-            # new Idea.Sprite({
+            # new Sprite({
             #   source: ["frame1.png", "frame2.png", "frame3.png", "frame4.png"...]
             # });
             @type = "animation"
-            if _useDom then throw new Error "Cannot create animation with DOM elements"
+            if _useDom then error "Cannot create animation with DOM elements", yes
             # Load each source
             @imgs = source.map (src) =>
-                new Idea.Sprite {source: src, @width, @height, repeating, onload, @speed, _useDom, tilesize, tiles: tiles}
+                new Sprite {source: src, @width, @height, repeating, onload, @speed, _useDom, tilesize, tiles: tiles}
             @imgInd = 0
         else if $.type(source) is "string"
             # Load some source like "mysource.png"
@@ -955,6 +1088,7 @@ class Idea.Sprite
         $(thisDiv).css position: "absolute"
         return
 
+Idea.Sprite = Sprite
 collisionRect = (a, b) ->
     # Tests for a collision between a (with x, y, width, and height) and b (with x, y, width, and height)
     # Returns either "top", "bottom", "left", "right", or false (if there is no collision)
@@ -971,9 +1105,9 @@ collisionRect = (a, b) ->
         when left then "left"
         else "top"
 
-Idea.basicFunctionsStart = ->
+basicFunctionsStart = ->
     # Creating assigning variables such as globalMouseX, globalMouseY etc.
-    Idea.basicFunctionsEnd()
+    basicFunctionsEnd()
     Idea.globalMouseX = Idea.globalMouseY = 0
     Idea.globalKeysdown = []
     Idea.globalMousedown = no
@@ -985,24 +1119,24 @@ Idea.basicFunctionsStart = ->
     mDown = []
     # Assign the events
     # Bind them using jQuery
+
     $(game_screen)
     .contextmenu -> # Prevent right clicks on the canvas screen
         no
-    .mousemove (e) -> # Caputre mousemove events and assign to globalMouseX and globalMouseY
+    .dblclick (e) -> # Prevent double clicks from their default action
+        no
+    mouseMoveHandler = (e) -> # Caputre mousemove events and assign to globalMouseX and globalMouseY
         Idea.globalMouseX = e.offsetX or e.pageX - $(this).offset().left
         Idea.globalMouseY = e.offsetY or e.pageY - $(this).offset().top
         no
-    .mousedown (e) ->
+    mouseDownHandler = (e) ->
         Idea.globalMousepressed = Idea.globalMousedown = if e.which is 3 then "right" else "left" # Mousedown events
         no
-    .mouseup (e) -> # Mouseup events
+    mouseUpHandler = (e) -> # Mouseup events
         Idea.globalMousedown = no
         Idea.globalMouseup = if e.which is 3 then "right" else "left"
         no
-    .dblclick (e) -> # Prevent double clicks from their default action
-        no
-    $(document)
-    .keydown (e) -> # When key is pressed
+    keyDownHandler = (e) -> # When key is pressed
         # Abbreviations
         d = Idea.globalKeysdown
         p = Idea.globalKeyspressed
@@ -1013,7 +1147,7 @@ Idea.basicFunctionsStart = ->
             p.push w # so add it to keyspressed and mDown
             mDown.push w
         no
-    .keyup (e) ->
+    keyUpHandler = (e) ->
         # Key up event so take out w from mDown
         # mDown.splice mDown.indexOf(w), 1
         d = Idea.globalKeysdown
@@ -1024,14 +1158,17 @@ Idea.basicFunctionsStart = ->
             u.push w
         d.splice d.indexOf(w), 1
         no
+    
+    controls.mouseControls mouseDownHandler, mouseUpHandler, mouseMoveHandler
+    controls.keyControls keyDownHandler, keyUpHandler
     return
-Idea.basicFunctionsEnd = ->
+basicFunctionsEnd = ->
     # Resets globalKeysup, globalKeyspressed, globalMousepressed, and globalMouseup
     Idea.globalKeysup = []
     Idea.globalKeyspressed = []
     Idea.globalMousepressed = Idea.globalMouseup = no
     return
-Idea.math =
+Idea.math = math =
     # The distance function is the basic formula for calculating the distance between two points.
     # You can provide 4 points, an object and two points, two points and an object, or two objects.
     # So, for example, you could do this
@@ -1082,12 +1219,12 @@ Idea.math =
                 height: h2
         return collisionRect obj1, obj2
 
-# This is the array with all rooms created by Idea.Room
+# This is the array with all rooms created by Room
 # We can access the index with room.id
-# So if room.constructor === Idea.Room then:
+# So if room.constructor === Room then:
 # Idea.allRooms[room.id] === room // <-- true 
-Idea.allRooms = []
-class Idea.Room
+Idea.allRooms = allRooms = []
+class Room
     constructor: (args = {}) ->
          [@persistent, @background, backPic, @w, @h, repeating, @useBackCanvas] = [args.persistent, args.background, args.backPic
             args.width ? (gameWidth ? 0), args.height ? (gameHeight ? 0), args.repeating ? yes
@@ -1098,8 +1235,8 @@ class Idea.Room
          @allInstances = []
          @staticInst = []
          @deactivated = []
-         Idea.allRooms.push @
-         @id = Idea.allRooms.length - 1
+         allRooms.push @
+         @id = allRooms.length - 1
          @dynamic = []
          @trx = 0
          @try = 0
@@ -1126,9 +1263,9 @@ class Idea.Room
                             that.smallCan[n].push c
                     return
                 if repeating
-                    (new Idea.Sprite backPic, @w, @h, repeating, ->
+                    (new Sprite backPic, @w, @h, repeating, ->
                         largePic.src = @c.toDataURL())
-             else if backPic? then @backPic = new Idea.Sprite source: backPic, width: @w, height: @h, repeating: repeating
+             else if backPic? then @backPic = new Sprite source: backPic, width: @w, height: @h, repeating: repeating
 
     refreshBackground: ->
         # A fairly expensive call -
@@ -1221,7 +1358,7 @@ class Idea.Room
             if f.instance.y <= room.view()[1] + f.borderY && room.view()[1] > 0 then room.view(0, -f.speedY)
             if f.instance.x >= room.view()[0] + gameWidth - (f.borderX + f.instance.width) && room.view()[0] < room.w - gameWidth then room.view(f.speedX, 0)
             if f.instance.x <= room.view()[0] + f.borderX && room.view()[0] > 0 then room.view(-f.speedX, 0)
-        for alarm in Idea.alarms
+        for alarm in alarms
             if alarm?.value > 0 and --alarm.value is 0
                     alarm.value = -1
                     alarm.trigger()
@@ -1234,7 +1371,7 @@ class Idea.Room
         inst.destroy(off) for inst in @toDestroy
         @toDestroy = []
         if @roomToGoTo
-            Idea.roomGoto @roomToGoTo, no
+            roomGoto @roomToGoTo, no
             @roomToGoTo = off
         return
     view: (mx = 0, my = 0, relative = yes) ->
@@ -1255,31 +1392,33 @@ class Idea.Room
         @following.speedX = speedX
         @following.speedY = speedY
         return
-Idea.roomGoto = (newRoom, toBuffer = Idea.settings.bufferRoomGoto, callback) ->
+Idea.Room = Room
+Idea.roomGoto = roomGoto = (newRoom, toBuffer = settings.bufferRoomGoto, callback) ->
     if toBuffer and room?
         room.roomToGoTo = newRoom
         return switch newRoom
-            when "next" then Idea.allRooms[room.id + 1]
-            when "previous" then Idea.allRooms[room.id - 1]
+            when "next" then allRooms[room.id + 1]
+            when "previous" then allRooms[room.id - 1]
             else newRoom
     prevRoom = room
     if prevRoom?
-        inst.roomEnd?() for inst in i for i in prevRoom.allInstances
+        trigger inst, "roomEnd" for inst in i for i in prevRoom.allInstances
         $("div[class^='divSprite']").remove()
         unless prevRoom.persistent
-            prevRoom.allInstances = instanceArray()
-            for i in Idea.allObjects
+            prevRoom.allInstances = new InstanceArray()
+            for i in allObjects
                 prevRoom.allInstances.push []
     switch newRoom
         when "next"
-            room = Idea.allRooms[room.id + 1]
+            room = allRooms[room.id + 1]
         when "previous"
-            room = Idea.allRooms[room.id - 1]
+            room = allRooms[room.id - 1]
         else
             room = newRoom
     room.create?()
     room.refreshBackground?()
-    inst.roomStart?() for inst in i for i in room.allInstances
+    trigger inst, "roomStart" for inst in i for i in room.allInstances
     room
 Idea.getRoom = -> room
+# Export Idea
 window["Idea"] = Idea
